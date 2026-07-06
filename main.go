@@ -16,7 +16,10 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 //go:embed index.html
@@ -51,6 +54,42 @@ type ListResponse struct {
 	Files []string   `json:"files"`
 	Lines []TextItem `json:"lines"`
 	Texts []TextItem `json:"texts"`
+}
+
+// Broadcaster 管理所有 SSE 客户端连接，并在目录变化时向它们广播通知。
+type Broadcaster struct {
+	mu      sync.Mutex
+	clients map[chan struct{}]struct{}
+}
+
+// NewBroadcaster 创建广播器。
+func NewBroadcaster() *Broadcaster {
+	return &Broadcaster{clients: make(map[chan struct{}]struct{})}
+}
+
+// Subscribe 注册一个新客户端，返回其通知通道与取消订阅函数。
+func (b *Broadcaster) Subscribe() (chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	b.mu.Lock()
+	b.clients[ch] = struct{}{}
+	b.mu.Unlock()
+	return ch, func() {
+		b.mu.Lock()
+		delete(b.clients, ch)
+		b.mu.Unlock()
+	}
+}
+
+// Notify 向所有客户端发送一次变化通知（非阻塞：通道满则跳过）。
+func (b *Broadcaster) Notify() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.clients {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func main() {
@@ -137,6 +176,46 @@ func main() {
 	fileServer := http.StripPrefix("/files/", downloadHeaders(http.FileServer(noDirListing{http.Dir(filesDir)})))
 	mux.Handle("/files/", fileServer)
 
+	// 变化通知（SSE）：目录内容发生增删改时，向所有连接的网页推送事件，网页据此自动刷新。
+	broadcaster := NewBroadcaster()
+	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "当前服务器不支持 SSE", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		ch, unsubscribe := broadcaster.Subscribe()
+		defer unsubscribe()
+
+		// 建立连接时先发一次，确保刚打开页面即为最新。
+		fmt.Fprintf(w, "event: change\ndata: init\n\n")
+		flusher.Flush()
+
+		// 定期心跳，避免代理/浏览器判定连接超时断开。
+		heartbeat := time.NewTicker(25 * time.Second)
+		defer heartbeat.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ch:
+				fmt.Fprintf(w, "event: change\ndata: update\n\n")
+				flusher.Flush()
+			case <-heartbeat.C:
+				fmt.Fprintf(w, ": keep-alive\n\n")
+				flusher.Flush()
+			}
+		}
+	})
+
+	// 启动目录变化监听：优先用 fsnotify 实时监听，失败则回退为定时扫描。
+	startWatching(broadcaster, filesDir, linesDir, textsDir)
+
 	// 选择可用端口（从指定端口向后尝试）。
 	ln, actualPort, err := listenWithFallback(*port)
 	if err != nil {
@@ -161,6 +240,93 @@ func main() {
 	if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("HTTP 服务异常退出：%v", err)
 	}
+}
+
+// startWatching 监听给定目录的变化，变化时通过广播器通知客户端。
+// 优先使用 fsnotify 实时监听；若初始化失败，则回退为定时扫描指纹的方式。
+func startWatching(b *Broadcaster, dirs ...string) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("提示：文件监听不可用，回退为定时扫描（%v）", err)
+		go pollWatch(b, dirs...)
+		return
+	}
+
+	added := 0
+	for _, d := range dirs {
+		if err := watcher.Add(d); err != nil {
+			log.Printf("提示：无法监听目录 %s：%v", d, err)
+			continue
+		}
+		added++
+	}
+	if added == 0 {
+		_ = watcher.Close()
+		go pollWatch(b, dirs...)
+		return
+	}
+
+	go func() {
+		defer watcher.Close()
+		// 事件去抖：短时间内的多次变化合并为一次通知，避免频繁刷新。
+		var debounce *time.Timer
+		fire := func() {
+			if debounce != nil {
+				debounce.Stop()
+			}
+			debounce = time.AfterFunc(200*time.Millisecond, b.Notify)
+		}
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				// 关心增删改重命名（写入完成、创建、删除、改名都会触发刷新）。
+				if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename) != 0 {
+					fire()
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("文件监听错误：%v", err)
+			}
+		}
+	}()
+}
+
+// pollWatch 是降级方案：定时扫描目录，计算指纹，变化时通知。
+func pollWatch(b *Broadcaster, dirs ...string) {
+	last := dirsFingerprint(dirs...)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		cur := dirsFingerprint(dirs...)
+		if cur != last {
+			last = cur
+			b.Notify()
+		}
+	}
+}
+
+// dirsFingerprint 根据目录内文件名、大小、修改时间生成一个简单指纹。
+func dirsFingerprint(dirs ...string) string {
+	var sb strings.Builder
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(&sb, "%s|%d|%d;", e.Name(), info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	return sb.String()
 }
 
 // seedDemoContent 在对应目录为空时写入一个演示文件；目录非空则跳过，不覆盖用户内容。

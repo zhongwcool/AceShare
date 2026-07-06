@@ -575,9 +575,55 @@
       .catch(function () {});
   }
 
+  // 自动刷新：优先用 SSE 实时接收变化通知；SSE 不可用或断线时回退为定时轮询。
+  var reloadTimer = null;
+  function scheduleReload() {
+    if (reloadTimer) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(load, 150);
+  }
+
+  var pollTimer = null;
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(load, 5000);
+  }
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startAutoRefresh() {
+    if (typeof EventSource === "undefined") {
+      startPolling(); // 浏览器不支持 SSE，直接轮询
+      return;
+    }
+    var es;
+    try {
+      es = new EventSource("/api/events");
+    } catch (e) {
+      startPolling();
+      return;
+    }
+    es.addEventListener("change", function (ev) {
+      // init 事件是连接建立时的初始同步，无需重复加载首屏。
+      if (ev.data === "init") return;
+      scheduleReload();
+    });
+    es.onopen = function () {
+      stopPolling(); // SSE 正常，停止兜底轮询
+    };
+    es.onerror = function () {
+      // 连接出错时启用轮询兜底；浏览器会自动尝试重连 SSE。
+      startPolling();
+    };
+  }
+
   function init() {
     load();
     loadVersion();
+    startAutoRefresh();
   }
 
   // 脚本位于 body 末尾，DOMContentLoaded 可能已触发，需兼容两种情况。
