@@ -363,7 +363,7 @@ func printBanner(rootDir string, port int) {
 		}
 	}
 	fmt.Println("----------------------------------------")
-	fmt.Println(" 把文件放进 files/，短文本放进 lines/，长文本放进 texts/")
+	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println(" 按 Ctrl+C 停止服务")
 	fmt.Println("========================================")
 }
