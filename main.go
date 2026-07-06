@@ -25,6 +25,21 @@ var embeddedFiles embed.FS
 //go:embed logo.ico
 var faviconBytes []byte
 
+// 版本信息。可在编译时通过 -ldflags 注入覆盖，例如：
+//
+//	go build -ldflags "-X main.version=v1.0.0 -X main.commit=abc123 -X main.buildTime=2026-07-06"
+var (
+	version   = "dev"     // 版本号
+	commit    = "unknown" // Git 提交哈希
+	buildTime = "unknown" // 构建时间
+)
+
+// versionString 返回用于展示的版本描述。
+func versionString() string {
+	return fmt.Sprintf("局域网文件与文本分享工具 %s (commit %s, built %s, %s)",
+		version, commit, buildTime, runtime.Version())
+}
+
 // TextItem 表示 lines/ 或 texts/ 目录下的一个文本条目。
 type TextItem struct {
 	Title string `json:"title"`
@@ -44,7 +59,14 @@ func main() {
 	port := flag.Int("port", 8080, "起始监听端口，被占用时自动向后寻找可用端口")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
 	open := flag.Bool("open", true, "启动后自动用默认浏览器打开本机页面（-open=false 可禁用）")
+	showVersion := flag.Bool("version", false, "打印版本信息后退出")
+	flag.BoolVar(showVersion, "v", false, "打印版本信息后退出（-version 简写）")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(versionString())
+		return
+	}
 
 	rootDir := *dir
 	filesDir := filepath.Join(rootDir, "files")
@@ -83,6 +105,17 @@ func main() {
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		_, _ = w.Write(faviconBytes)
+	})
+
+	// 版本信息接口，供页面页脚展示。
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"version":   version,
+			"commit":    commit,
+			"buildTime": buildTime,
+			"goVersion": runtime.Version(),
+		})
 	})
 
 	// 列表接口。
@@ -316,6 +349,7 @@ func printBanner(rootDir string, port int) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具 已启动")
 	fmt.Println("========================================")
+	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)
 	fmt.Println("----------------------------------------")
 	fmt.Printf(" 本机访问地址：   http://localhost:%d\n", port)

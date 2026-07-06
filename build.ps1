@@ -5,7 +5,19 @@ $ErrorActionPreference = "Stop"
 
 $AppName = "aceshare"
 $DistDir = "dist"
-$LdFlags = "-s -w"
+
+# 版本信息：优先用第一个命令行参数，其次用 git 描述，最后回退到 v0.0.0。
+$Version = if ($args.Count -ge 1 -and $args[0]) { $args[0] } else {
+    $v = (git describe --tags --always --dirty 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $v) { $v.Trim() } else { "v0.0.0" }
+}
+$Commit = (git rev-parse --short HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $Commit) { $Commit = "unknown" } else { $Commit = $Commit.Trim() }
+$BuildTime = (Get-Date -Format "yyyy-MM-dd")
+
+Write-Host "版本：$Version  提交：$Commit  构建时间：$BuildTime" -ForegroundColor Cyan
+
+$LdFlags = "-s -w -X main.version=$Version -X main.commit=$Commit -X main.buildTime=$BuildTime"
 
 # 目标平台：GOOS/GOARCH/输出文件名
 $Targets = @(

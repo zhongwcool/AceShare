@@ -39,9 +39,10 @@
 
 | 参数     | 说明                                             | 默认值             |
 | -------- | ------------------------------------------------ | ------------------ |
-| `-port`  | 起始监听端口；被占用时自动向后尝试下一个可用端口 | `8080`             |
-| `-dir`   | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录 |
-| `-open`  | 启动后自动用默认浏览器打开本机页面               | `true`             |
+| `-port`    | 起始监听端口；被占用时自动向后尝试下一个可用端口 | `8080`             |
+| `-dir`     | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录 |
+| `-open`    | 启动后自动用默认浏览器打开本机页面               | `true`             |
+| `-version` | 打印版本信息后退出（简写 `-v`）                  | -                  |
 
 示例：
 
@@ -69,6 +70,8 @@
 ```
 
 - `GET /files/<name>` —— 下载 `files/` 下对应文件（附带下载响应头，并防止目录穿越）。
+- `GET /api/version` —— 返回版本信息 JSON：`{"version":"v1.0.0","commit":"abc1234","buildTime":"2026-07-06","goVersion":"go1.24"}`。
+- `GET /favicon.ico` —— 内嵌的网站图标。
 
 ## 自行编译
 
@@ -111,6 +114,30 @@ dist/
 # 例：编译 Windows 64 位
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o aceshare.exe .
 ```
+
+### 版本信息注入
+
+版本号在编译时通过 `-ldflags -X` 注入，无需改代码。运行 `aceshare -version` 可查看；启动横幅和网页页脚也会显示。
+
+`build.ps1` / `build.sh` 会自动注入版本：默认取 `git describe`（如 `v1.0.0`），也可手动指定版本作为第一个参数：
+
+```powershell
+# Windows：指定版本号
+./build.ps1 v1.2.0
+```
+
+```bash
+# Linux / macOS：指定版本号
+./build.sh v1.2.0
+```
+
+手动编译时注入版本：
+
+```bash
+go build -trimpath -ldflags "-s -w -X main.version=v1.2.0 -X main.commit=$(git rev-parse --short HEAD) -X main.buildTime=$(date +%Y-%m-%d)" -o aceshare.exe .
+```
+
+未注入时默认显示 `dev`。
 
 ## 程序图标
 

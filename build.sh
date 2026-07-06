@@ -6,7 +6,15 @@ set -euo pipefail
 
 APP_NAME="aceshare"
 DIST_DIR="dist"
-LDFLAGS="-s -w"
+
+# 版本信息：优先用第一个命令行参数，其次用 git 描述，最后回退到 v0.0.0。
+VERSION="${1:-$(git describe --tags --always --dirty 2>/dev/null || echo v0.0.0)}"
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+BUILD_TIME="$(date +%Y-%m-%d)"
+
+echo "版本：${VERSION}  提交：${COMMIT}  构建时间：${BUILD_TIME}"
+
+LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}"
 
 # 目标平台： "GOOS GOARCH 输出文件名"
 TARGETS=(
