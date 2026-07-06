@@ -1,28 +1,63 @@
 #!/usr/bin/env bash
 # 一键交叉编译脚本（Linux / macOS）
 # 产物输出到 dist/ 目录，使用 -ldflags "-s -w" 减小体积。
+#
+# 用法示例（位置参数：平台 [版本号]）：
+#   ./build.sh                 # 编译全部平台（默认）
+#   ./build.sh windows         # 只编译 Windows exe
+#   ./build.sh mac             # 只编译 macOS（amd64 + arm64）
+#   ./build.sh linux           # 只编译 Linux
+#   ./build.sh all v1.2.0      # 全部平台，指定版本号
+#   ./build.sh windows v1.2.0  # 只编译 Windows，指定版本号
 
 set -euo pipefail
 
 APP_NAME="aceshare"
 DIST_DIR="dist"
 
-# 版本信息：优先用第一个命令行参数，其次用 git 描述，最后回退到 v0.0.0。
-VERSION="${1:-$(git describe --tags --always --dirty 2>/dev/null || echo v0.0.0)}"
+# 第一个参数：目标平台（all/windows/linux/mac/darwin），缺省为 all。
+PLATFORM="${1:-all}"
+
+# 版本信息：优先用第二个命令行参数，其次用 git 描述，最后回退到 v0.0.0。
+VERSION="${2:-$(git describe --tags --always --dirty 2>/dev/null || echo v0.0.0)}"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date +%Y-%m-%d)"
 
-echo "版本：${VERSION}  提交：${COMMIT}  构建时间：${BUILD_TIME}"
+echo "平台：${PLATFORM}  版本：${VERSION}  提交：${COMMIT}  构建时间：${BUILD_TIME}"
 
 LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}"
 
-# 目标平台： "GOOS GOARCH 输出文件名"
-TARGETS=(
+# 全部可选目标平台： "GOOS GOARCH 输出文件名"
+ALL_TARGETS=(
   "windows amd64 ${APP_NAME}-windows-amd64.exe"
   "linux   amd64 ${APP_NAME}-linux-amd64"
   "darwin  amd64 ${APP_NAME}-macos-amd64"
   "darwin  arm64 ${APP_NAME}-macos-arm64"
 )
+
+# 根据平台参数筛选要编译的目标。
+TARGETS=()
+case "$(echo "$PLATFORM" | tr '[:upper:]' '[:lower:]')" in
+  all)
+    TARGETS=("${ALL_TARGETS[@]}")
+    ;;
+  windows|win)
+    TARGETS=("windows amd64 ${APP_NAME}-windows-amd64.exe")
+    ;;
+  linux)
+    TARGETS=("linux amd64 ${APP_NAME}-linux-amd64")
+    ;;
+  mac|macos|darwin)
+    TARGETS=(
+      "darwin amd64 ${APP_NAME}-macos-amd64"
+      "darwin arm64 ${APP_NAME}-macos-arm64"
+    )
+    ;;
+  *)
+    echo "未知平台：${PLATFORM}（可选：all / windows / linux / mac）" >&2
+    exit 1
+    ;;
+esac
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"

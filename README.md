@@ -95,6 +95,8 @@ Linux / macOS：
 
 ```bash
 chmod +x build.sh
+```
+```bash
 ./build.sh
 ```
 
@@ -108,36 +110,22 @@ dist/
 └─ aceshare-macos-arm64
 ```
 
-### 手动编译单个平台
+### 只编译单个平台（推荐用脚本）
 
+不用手敲环境变量，直接给脚本传平台即可。版本号会自动从 git 取，无需手填。
+
+Windows（PowerShell，`-p` 是 `-Platform` 的简写）：
+
+编译 Windows exe
 ```bash
-# 例：编译 Windows 64 位
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o aceshare.exe .
+./build.ps1 -p windows
 ```
 
-### 版本信息注入
-
-版本号在编译时通过 `-ldflags -X` 注入，无需改代码。运行 `aceshare -version` 可查看；启动横幅和网页页脚也会显示。
-
-`build.ps1` / `build.sh` 会自动注入版本：默认取 `git describe`（如 `v1.0.0`），也可手动指定版本作为第一个参数：
-
-```powershell
-# Windows：指定版本号
-./build.ps1 v1.2.0
-```
-
+Linux / macOS（Bash）：
 ```bash
-# Linux / macOS：指定版本号
-./build.sh v1.2.0
+./build.sh windows       # 只编译 Windows exe
 ```
 
-手动编译时注入版本：
-
-```bash
-go build -trimpath -ldflags "-s -w -X main.version=v1.2.0 -X main.commit=$(git rev-parse --short HEAD) -X main.buildTime=$(date +%Y-%m-%d)" -o aceshare.exe .
-```
-
-未注入时默认显示 `dev`。
 
 ## 程序图标
 
