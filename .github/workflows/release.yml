@@ -63,6 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           APP_NAME="aceshare"
+          # 发布产物文件名带上版本号，便于识别（如 aceshare-v1.0.3-windows-amd64.exe）。
+          NAME="${APP_NAME}-${VERSION}"
           LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}"
           mkdir -p dist
           build() {
@@ -70,10 +72,10 @@ jobs:
             echo "编译 ${goos}/${goarch} -> dist/${out}"
             GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "dist/${out}" .
           }
-          build windows amd64 "${APP_NAME}-windows-amd64.exe"
-          build linux   amd64 "${APP_NAME}-linux-amd64"
-          build darwin  amd64 "${APP_NAME}-macos-amd64"
-          build darwin  arm64 "${APP_NAME}-macos-arm64"
+          build windows amd64 "${NAME}-windows-amd64.exe"
+          build linux   amd64 "${NAME}-linux-amd64"
+          build darwin  amd64 "${NAME}-macos-amd64"
+          build darwin  arm64 "${NAME}-macos-arm64"
           ls -lh dist
 
       # 创建 GitHub Release 并上传 dist/ 下所有产物。
