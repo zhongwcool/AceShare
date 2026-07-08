@@ -95,7 +95,7 @@ func (b *Broadcaster) Notify() {
 func main() {
 	defaultDir := executableDir()
 
-	port := flag.Int("port", 8080, "起始监听端口，被占用时自动向后寻找可用端口")
+	port := flag.Int("port", 0, "监听端口；0=自动（先 80 再 8000，随后递增）。也可显式指定如 8000")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
 	open := flag.Bool("open", true, "启动后自动用默认浏览器打开本机页面（-open=false 可禁用）")
 	showVersion := flag.Bool("version", false, "打印版本信息后退出")
@@ -216,24 +216,38 @@ func main() {
 	// 启动目录变化监听：优先用 fsnotify 实时监听，失败则回退为定时扫描。
 	startWatching(broadcaster, filesDir, linesDir, textsDir)
 
-	// 选择可用端口（从指定端口向后尝试）。
-	ln, actualPort, err := listenWithFallback(*port)
+	// 选择可用端口：默认先 80，再 8000；显式 -port 时从指定端口向后尝试。
+	var ln net.Listener
+	var actualPort int
+	var err error
+	if *port == 0 {
+		ln, actualPort, err = listenWithPreferredPorts(80, 8000)
+	} else {
+		ln, actualPort, err = listenWithFallback(*port)
+	}
 	if err != nil {
+		if *port == 0 {
+			log.Fatalf("无法绑定任何端口（已尝试 80、8000 及后续端口）：%v", err)
+		}
 		log.Fatalf("无法绑定任何端口（从 %d 开始尝试）：%v", *port, err)
 	}
 
 	printBanner(rootDir, actualPort)
 
-	// 启动后自动打开本机页面。放到 goroutine 里，避免阻塞服务启动。
+	// 启动后自动打开本机页面。优先使用 192.168.* 局域网地址，不使用 localhost。
 	if *open {
-		localURL := fmt.Sprintf("http://localhost:%d", actualPort)
-		go func() {
-			// 稍等片刻，确保服务已开始接受连接。
-			time.Sleep(300 * time.Millisecond)
-			if err := openBrowser(localURL); err != nil {
-				log.Printf("提示：未能自动打开浏览器，请手动访问 %s（%v）", localURL, err)
-			}
-		}()
+		if host := preferredLANHost(); host == "" {
+			log.Printf("提示：未检测到局域网 IPv4 地址，跳过自动打开浏览器")
+		} else {
+			openURL := formatURL(host, actualPort)
+			go func() {
+				// 稍等片刻，确保服务已开始接受连接。
+				time.Sleep(300 * time.Millisecond)
+				if err := openBrowser(openURL); err != nil {
+					log.Printf("提示：未能自动打开浏览器，请手动访问 %s（%v）", openURL, err)
+				}
+			}()
+		}
 	}
 
 	server := &http.Server{Handler: mux}
@@ -495,19 +509,44 @@ func (n noDirListing) Open(name string) (http.File, error) {
 	return f, nil
 }
 
+// listenWithPreferredPorts 按顺序尝试首选端口，全部失败后从最后一个端口+1 起向后寻找。
+func listenWithPreferredPorts(ports ...int) (net.Listener, int, error) {
+	for _, p := range ports {
+		ln, err := tryListen(p)
+		if err == nil {
+			return ln, p, nil
+		}
+	}
+	if len(ports) == 0 {
+		return listenWithFallback(8000)
+	}
+	return listenWithFallback(ports[len(ports)-1] + 1)
+}
+
 // listenWithFallback 从 startPort 起向后尝试绑定，返回监听器与实际端口。
 func listenWithFallback(startPort int) (net.Listener, int, error) {
 	const maxTries = 50
 	var lastErr error
 	for p := startPort; p < startPort+maxTries && p <= 65535; p++ {
-		addr := fmt.Sprintf("0.0.0.0:%d", p)
-		ln, err := net.Listen("tcp", addr)
+		ln, err := tryListen(p)
 		if err == nil {
 			return ln, p, nil
 		}
 		lastErr = err
 	}
 	return nil, 0, lastErr
+}
+
+func tryListen(port int) (net.Listener, error) {
+	return net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+}
+
+// formatURL 生成访问地址；80 端口省略端口号，其它端口正常显示。
+func formatURL(host string, port int) string {
+	if port == 80 {
+		return "http://" + host
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 // printBanner 打印访问地址等启动信息。
@@ -518,20 +557,35 @@ func printBanner(rootDir string, port int) {
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)
 	fmt.Println("----------------------------------------")
-	fmt.Printf(" 本机访问地址：   http://localhost:%d\n", port)
+	fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", port))
 
 	ips := localIPv4s()
 	if len(ips) == 0 {
 		fmt.Println(" 局域网访问地址： （未检测到可用网卡 IPv4 地址）")
 	} else {
 		for _, ip := range ips {
-			fmt.Printf(" 局域网访问地址： http://%s:%d\n", ip, port)
+			fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, port))
 		}
 	}
 	fmt.Println("----------------------------------------")
 	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println(" 按 Ctrl+C 停止服务")
 	fmt.Println("========================================")
+}
+
+// preferredLANHost 返回用于自动打开浏览器的局域网主机名。
+// 优先 192.168.*；若无则取第一个可用局域网 IPv4；不使用 localhost。
+func preferredLANHost() string {
+	ips := localIPv4s()
+	for _, ip := range ips {
+		if strings.HasPrefix(ip, "192.168.") {
+			return ip
+		}
+	}
+	if len(ips) > 0 {
+		return ips[0]
+	}
+	return ""
 }
 
 // localIPv4s 返回所有非回环网卡的 IPv4 地址。
