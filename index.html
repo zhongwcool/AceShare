@@ -247,6 +247,14 @@
     color: var(--text-dim);
     font-size: 12px;
   }
+  footer a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  footer a:hover {
+    color: var(--accent);
+  }
   footer .app-version {
     margin-top: 4px;
     font-size: 11px;
@@ -332,7 +340,7 @@
   </div>
 
   <footer>
-    <div>局域网文件与文本分享工具 · 基于 Go 标准库 · 单文件运行</div>
+    <div>局域网文件与文本分享工具 · 联系开发者：<a href="mailto:zhongwcool@163.com">zhongwcool@163.com</a></div>
     <div id="app-version" class="app-version"></div>
   </footer>
 
