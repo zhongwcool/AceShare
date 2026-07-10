@@ -147,7 +147,7 @@ func main() {
 		_, _ = w.Write(faviconBytes)
 	})
 
-	// 版本信息接口，供页面页脚展示。
+	// 版本信息接口，供页面标题下方展示。
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -576,6 +576,7 @@ func formatURL(host string, port int) string {
 func printBanner(rootDir string, ports []int) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具")
+	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)

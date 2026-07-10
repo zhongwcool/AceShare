@@ -62,7 +62,12 @@
     text-align: center;
   }
   header h1 { font-size: 20px; margin: 0 0 4px; font-weight: 700; }
-  header p { margin: 0; color: var(--text-dim); font-size: 13px; }
+  header .app-version {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  }
 
   .layout {
     max-width: 1200px;
@@ -255,21 +260,13 @@
   footer a:hover {
     color: var(--accent);
   }
-  footer .app-version {
-    margin-top: 4px;
-    font-size: 11px;
-    opacity: 0.75;
-    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
-  }
-
   /* ============ 手机 / 窄屏适配 ============
      放在所有基础样式之后，确保能正确覆盖桌面端卡片样式。
      去掉卡片背景/边框/阴影/内边距，仅靠字体与排版分区。 */
   @media (max-width: 640px) {
     header { padding: 16px 16px 4px; }
     header h1 { font-size: 18px; }
-    header p { font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
-    header p code { word-break: break-word; }
+    header .app-version { font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
 
     .layout { padding: 4px 16px 8px; gap: 0; }
     .col { gap: 0; }
@@ -304,7 +301,7 @@
 <body>
   <header>
     <h1>局域网文件与文本分享</h1>
-    <p>把文件放进 <code>files</code>，短文本放进 <code>lines</code>，长文本放进 <code>texts</code></p>
+    <div id="app-version" class="app-version"></div>
   </header>
 
   <div class="layout">
@@ -341,7 +338,6 @@
 
   <footer>
     <div>局域网文件与文本分享工具 · 联系开发者：<a href="mailto:zhongwcool@163.com">zhongwcool@163.com</a></div>
-    <div id="app-version" class="app-version"></div>
   </footer>
 
 <script>
@@ -567,7 +563,7 @@
       });
   }
 
-  // 页脚版本信息
+  // 标题下方版本信息
   function loadVersion() {
     var node = document.getElementById("app-version");
     if (!node) return;
