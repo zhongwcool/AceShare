@@ -5,7 +5,7 @@
 - 单文件运行，前端页面通过 Go 的 `embed` 打包进可执行文件，无需任何外部文件。
 - **自动检测文件变化**：往目录里放入/删除文件后，已打开的网页会自动刷新，无需手动刷新（基于文件监听 + SSE 实时推送，并有轮询兜底）。
 - 编译进单个 exe 后仍是零运行时依赖，双击即用；仅有一个纯 Go 的文件监听依赖 `fsnotify`（编译期，静态链接，支持交叉编译）。
-- 支持交叉编译出 Windows / Linux / macOS(amd64 + arm64) 版本。
+- 支持交叉编译出 Windows(amd64 + arm64) / Linux / macOS(amd64 + arm64) 版本。
 
 ## 目录结构
 
@@ -40,7 +40,7 @@
 
 | 参数     | 说明                                             | 默认值             |
 | -------- | ------------------------------------------------ | ------------------ |
-| `-port`    | 监听端口；`0`=自动（先 **80**，再 **8000**，随后递增）；也可显式指定 | `0`（自动）        |
+| `-port`    | 监听端口；`0`=自动**同时**监听 **80** 与 **8000**；也可显式指定单个端口 | `0`（自动）        |
 | `-dir`     | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录 |
 | `-open`    | 启动后自动用默认浏览器打开本机页面               | `true`             |
 | `-version` | 打印版本信息后退出（简写 `-v`）                  | -                  |
@@ -55,7 +55,7 @@
 ./aceshare -dir /path/to/share
 ```
 
-> 提示：默认会优先尝试 **80**（访问时无需写端口号，如 `http://192.168.1.23`）。80 被占用或无权限绑定时，会自动改用 **8000** 及后续端口。在 Windows 上绑定 80 可能需要管理员权限。
+> 提示：默认会**同时**监听 **80** 和 **8000** 两个端口（如 `http://192.168.1.23` 与 `http://192.168.1.23:8000` 均可访问）。若某个端口被占用或无权限绑定，会跳过该端口并继续启动；两个都失败时才回退到 8001 及后续端口。在 Windows 上绑定 80 可能需要管理员权限。
 
 > 提示：服务监听 `0.0.0.0`，因此局域网可访问。若无法从其他设备访问，请检查系统防火墙是否放行了对应端口。
 
@@ -109,6 +109,7 @@ chmod +x build.sh
 ```
 dist/
 ├─ aceshare-windows-amd64.exe
+├─ aceshare-windows-arm64.exe
 ├─ aceshare-linux-amd64
 ├─ aceshare-macos-amd64
 └─ aceshare-macos-arm64
@@ -120,26 +121,27 @@ dist/
 
 Windows（PowerShell，`-p` 是 `-Platform` 的简写）：
 
-编译 Windows exe
+编译 Windows exe（amd64 + arm64）
 ```bash
 ./build.ps1 -p windows
 ```
 
 Linux / macOS（Bash）：
 ```bash
-./build.sh windows       # 只编译 Windows exe
+./build.sh windows       # 只编译 Windows exe（amd64 + arm64）
 ```
 
 
 ## 程序图标
 
 - **网页图标（favicon）**：`logo.ico` 通过 `//go:embed` 嵌入可执行文件，浏览器标签页会显示它，无需额外文件。
-- **Windows exe 图标**：由 `rsrc_windows.syso` 提供（已包含在仓库中）。Go 编译 Windows 目标时会自动链接它，使 `.exe` 文件在资源管理器里显示 `logo.ico` 图标。
+- **Windows exe 图标**：由 `rsrc_windows_amd64.syso` / `rsrc_windows_arm64.syso` 提供（已包含在仓库中）。Go 编译对应 Windows 架构时会自动链接，使 `.exe` 在资源管理器里显示 `logo.ico` 图标。
 
 若更换了 `logo.ico`，重新生成图标资源即可（一次性工具，不会加入项目依赖）：
 
 ```bash
-go run github.com/akavel/rsrc@latest -ico logo.ico -o rsrc_windows.syso
+go run github.com/akavel/rsrc@latest -arch amd64 -ico logo.ico -o rsrc_windows_amd64.syso
+go run github.com/akavel/rsrc@latest -arch arm64 -ico logo.ico -o rsrc_windows_arm64.syso
 ```
 
-`build.ps1` / `build.sh` 会在 `rsrc_windows.syso` 不存在时自动生成它。非 Windows 平台会忽略该文件，不受影响。
+`build.ps1` / `build.sh` 会在对应 `.syso` 不存在时自动生成。非 Windows 平台会忽略这些文件，不受影响。

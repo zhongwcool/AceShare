@@ -95,7 +95,7 @@ func (b *Broadcaster) Notify() {
 func main() {
 	defaultDir := executableDir()
 
-	port := flag.Int("port", 0, "监听端口；0=自动（先 80 再 8000，随后递增）。也可显式指定如 8000")
+	port := flag.Int("port", 0, "监听端口；0=自动同时监听 80 与 8000。也可显式指定单个端口如 8000")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
 	open := flag.Bool("open", true, "启动后自动用默认浏览器打开本机页面（-open=false 可禁用）")
 	showVersion := flag.Bool("version", false, "打印版本信息后退出")
@@ -216,30 +216,41 @@ func main() {
 	// 启动目录变化监听：优先用 fsnotify 实时监听，失败则回退为定时扫描。
 	startWatching(broadcaster, filesDir, linesDir, textsDir)
 
-	// 选择可用端口：默认先 80，再 8000；显式 -port 时从指定端口向后尝试。
-	var ln net.Listener
-	var actualPort int
+	// 绑定端口：默认同时监听 80 与 8000；显式 -port 时只监听指定端口。
+	var listeners []net.Listener
+	var boundPorts []int
 	var err error
 	if *port == 0 {
-		ln, actualPort, err = listenWithPreferredPorts(80, 8000)
-	} else {
-		ln, actualPort, err = listenWithFallback(*port)
-	}
-	if err != nil {
-		if *port == 0 {
-			log.Fatalf("无法绑定任何端口（已尝试 80、8000 及后续端口）：%v", err)
+		listeners, boundPorts = listenOnPorts(80, 8000)
+		if len(listeners) == 0 {
+			var ln net.Listener
+			var fallbackPort int
+			ln, fallbackPort, err = listenWithFallback(8001)
+			if err != nil {
+				log.Fatalf("无法绑定任何端口（已尝试 80、8000 及后续端口）：%v", err)
+			}
+			listeners = []net.Listener{ln}
+			boundPorts = []int{fallbackPort}
 		}
-		log.Fatalf("无法绑定任何端口（从 %d 开始尝试）：%v", *port, err)
+	} else {
+		var ln net.Listener
+		var singlePort int
+		ln, singlePort, err = listenWithFallback(*port)
+		if err != nil {
+			log.Fatalf("无法绑定任何端口（从 %d 开始尝试）：%v", *port, err)
+		}
+		listeners = []net.Listener{ln}
+		boundPorts = []int{singlePort}
 	}
 
-	printBanner(rootDir, actualPort)
+	printBanner(rootDir, boundPorts)
 
 	// 启动后自动打开本机页面。优先使用 192.168.* 局域网地址，不使用 localhost。
 	if *open {
 		if host := preferredLANHost(); host == "" {
 			log.Printf("提示：未检测到局域网 IPv4 地址，跳过自动打开浏览器")
 		} else {
-			openURL := formatURL(host, actualPort)
+			openURL := formatURL(host, preferredOpenPort(boundPorts))
 			go func() {
 				// 稍等片刻，确保服务已开始接受连接。
 				time.Sleep(300 * time.Millisecond)
@@ -251,7 +262,15 @@ func main() {
 	}
 
 	server := &http.Server{Handler: mux}
-	if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
+	errCh := make(chan error, len(listeners))
+	for _, ln := range listeners {
+		go func(l net.Listener) {
+			if err := server.Serve(l); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
+		}(ln)
+	}
+	if err := <-errCh; err != nil {
 		log.Fatalf("HTTP 服务异常退出：%v", err)
 	}
 }
@@ -509,18 +528,20 @@ func (n noDirListing) Open(name string) (http.File, error) {
 	return f, nil
 }
 
-// listenWithPreferredPorts 按顺序尝试首选端口，全部失败后从最后一个端口+1 起向后寻找。
-func listenWithPreferredPorts(ports ...int) (net.Listener, int, error) {
+// listenOnPorts 尝试同时绑定多个端口，成功的全部保留；失败的仅记录提示。
+func listenOnPorts(ports ...int) ([]net.Listener, []int) {
+	var listeners []net.Listener
+	var bound []int
 	for _, p := range ports {
 		ln, err := tryListen(p)
 		if err == nil {
-			return ln, p, nil
+			listeners = append(listeners, ln)
+			bound = append(bound, p)
+		} else {
+			log.Printf("提示：端口 %d 不可用（%v）", p, err)
 		}
 	}
-	if len(ports) == 0 {
-		return listenWithFallback(8000)
-	}
-	return listenWithFallback(ports[len(ports)-1] + 1)
+	return listeners, bound
 }
 
 // listenWithFallback 从 startPort 起向后尝试绑定，返回监听器与实际端口。
@@ -550,27 +571,46 @@ func formatURL(host string, port int) string {
 }
 
 // printBanner 打印访问地址等启动信息。
-func printBanner(rootDir string, port int) {
+func printBanner(rootDir string, ports []int) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具 已启动")
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)
 	fmt.Println("----------------------------------------")
-	fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", port))
+	for _, port := range ports {
+		fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", port))
+	}
 
 	ips := localIPv4s()
 	if len(ips) == 0 {
 		fmt.Println(" 局域网访问地址： （未检测到可用网卡 IPv4 地址）")
 	} else {
-		for _, ip := range ips {
-			fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, port))
+		for _, port := range ports {
+			for _, ip := range ips {
+				fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, port))
+			}
 		}
 	}
 	fmt.Println("----------------------------------------")
 	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println(" 按 Ctrl+C 停止服务")
 	fmt.Println("========================================")
+}
+
+// preferredOpenPort 返回自动打开浏览器时优先使用的端口（80 > 8000 > 其它）。
+func preferredOpenPort(ports []int) int {
+	for _, want := range []int{80, 8000} {
+		for _, p := range ports {
+			if p == want {
+				return p
+			}
+		}
+	}
+	if len(ports) > 0 {
+		return ports[0]
+	}
+	return 8000
 }
 
 // preferredLANHost 返回用于自动打开浏览器的局域网主机名。

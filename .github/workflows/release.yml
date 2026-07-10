@@ -49,11 +49,13 @@ jobs:
           echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "build_time=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      # 生成 Windows exe 图标资源（.syso），编译 windows 目标时会自动链接。
+      # 生成 Windows exe 图标资源（.syso），按架构分别生成，Go 会按文件名自动选用。
       - name: 生成 Windows 图标资源
-        run: go run github.com/akavel/rsrc@latest -ico logo.ico -o rsrc_windows.syso
+        run: |
+          go run github.com/akavel/rsrc@latest -arch amd64 -ico logo.ico -o rsrc_windows_amd64.syso
+          go run github.com/akavel/rsrc@latest -arch arm64 -ico logo.ico -o rsrc_windows_arm64.syso
 
-      # 交叉编译四个平台，产物输出到 dist/。
+      # 交叉编译五个平台，产物输出到 dist/。
       - name: 交叉编译
         env:
           CGO_ENABLED: "0"
@@ -73,6 +75,7 @@ jobs:
             GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "dist/${out}" .
           }
           build windows amd64 "${NAME}-windows-amd64.exe"
+          build windows arm64 "${NAME}-windows-arm64.exe"
           build linux   amd64 "${NAME}-linux-amd64"
           build darwin  amd64 "${NAME}-macos-amd64"
           build darwin  arm64 "${NAME}-macos-arm64"

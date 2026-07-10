@@ -38,6 +38,7 @@ $LdFlags = "-s -w -X main.version=$Version -X main.commit=$Commit -X main.buildT
 # 全部可选目标平台：GOOS/GOARCH/输出文件名
 $AllTargets = @(
     @{ OS = "windows"; Arch = "amd64"; Out = "$AppName-windows-amd64.exe" },
+    @{ OS = "windows"; Arch = "arm64"; Out = "$AppName-windows-arm64.exe" },
     @{ OS = "linux";   Arch = "amd64"; Out = "$AppName-linux-amd64" },
     @{ OS = "darwin";  Arch = "amd64"; Out = "$AppName-macos-amd64" },
     @{ OS = "darwin";  Arch = "arm64"; Out = "$AppName-macos-arm64" }
@@ -63,13 +64,22 @@ if (Test-Path $DistDir) {
 }
 New-Item -ItemType Directory -Path $DistDir | Out-Null
 
-# 生成 Windows exe 图标资源（.syso）。Go 编译 Windows 目标时会自动链接它。
-# 使用一次性工具 rsrc，不会加入项目依赖；非 Windows 目标会自动忽略该文件。
-if ((Test-Path "logo.ico") -and -not (Test-Path "rsrc_windows.syso")) {
-    Write-Host "生成 exe 图标资源 rsrc_windows.syso"
-    go run github.com/akavel/rsrc@latest -ico logo.ico -o rsrc_windows.syso
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "生成图标资源失败，将编译无图标版本"
+# 生成 Windows exe 图标资源（.syso）。按架构分别生成，Go 会按文件名自动选用。
+# 使用一次性工具 rsrc，不会加入项目依赖；非 Windows 目标会自动忽略这些文件。
+# 旧的无架构后缀文件会在 arm64 链接时报错，若存在则删除。
+if (Test-Path "rsrc_windows.syso") {
+    Remove-Item "rsrc_windows.syso" -Force
+}
+if (Test-Path "logo.ico") {
+    foreach ($arch in @("amd64", "arm64")) {
+        $syso = "rsrc_windows_$arch.syso"
+        if (-not (Test-Path $syso)) {
+            Write-Host "生成 exe 图标资源 $syso"
+            go run github.com/akavel/rsrc@latest -arch $arch -ico logo.ico -o $syso
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "生成 $syso 失败，对应架构将编译无图标版本"
+            }
+        }
     }
 }
 
