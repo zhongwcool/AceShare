@@ -68,6 +68,14 @@
     font-size: 13px;
     font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   }
+  header .app-version a.update-hint {
+    color: var(--ok);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  header .app-version a.update-hint:hover {
+    text-decoration: underline;
+  }
 
   .layout {
     max-width: 1200px;
@@ -563,7 +571,7 @@
       });
   }
 
-  // 标题下方版本信息
+  // 标题下方版本信息；若有新版本则在末尾追加可点击提示。
   function loadVersion() {
     var node = document.getElementById("app-version");
     if (!node) return;
@@ -575,7 +583,19 @@
         if (v.version) parts.push(v.version);
         if (v.buildTime && v.buildTime !== "unknown") parts.push(v.buildTime);
         if (v.commit && v.commit !== "unknown") parts.push(v.commit.slice(0, 7));
-        node.textContent = parts.length ? "版本 " + parts.join(" · ") : "";
+        node.textContent = "";
+        if (!parts.length) return;
+        node.appendChild(document.createTextNode("版本 " + parts.join(" · ")));
+        if (v.updateAvailable && v.latestVersion) {
+          node.appendChild(document.createTextNode(" · "));
+          var a = document.createElement("a");
+          a.href = v.releaseURL || "https://github.com/zhongwcool/AceShare/releases";
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "update-hint";
+          a.textContent = "有新版本 " + v.latestVersion;
+          node.appendChild(a);
+        }
       })
       .catch(function () {});
   }

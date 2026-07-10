@@ -74,7 +74,7 @@
 ```
 
 - `GET /files/<name>` —— 下载 `files/` 下对应文件（附带下载响应头，并防止目录穿越）。
-- `GET /api/version` —— 返回版本信息 JSON：`{"version":"v1.0.0","commit":"abc1234","buildTime":"2026-07-06","goVersion":"go1.24"}`。
+- `GET /api/version` —— 返回版本信息 JSON。字段包括 `version` / `commit` / `buildTime` / `goVersion`；若检测到 [GitHub Releases](https://github.com/zhongwcool/AceShare/releases) 有更新，还会附带 `updateAvailable`、`latestVersion`、`releaseURL`。
 - `GET /api/events` —— SSE（Server-Sent Events）事件流。目录内容变化时推送 `change` 事件，网页据此自动刷新。
 - `GET /favicon.ico` —— 内嵌的网站图标。
 

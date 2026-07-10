@@ -29,6 +29,9 @@ var embeddedFiles embed.FS
 //go:embed logo.ico
 var faviconBytes []byte
 
+//go:embed demo_image1.jpg
+var demoImage1Bytes []byte
+
 // 版本信息。可在编译时通过 -ldflags 注入覆盖，例如：
 //
 //	go build -ldflags "-X main.version=v1.0.0 -X main.commit=abc123 -X main.buildTime=2026-07-06"
@@ -42,6 +45,133 @@ var (
 func versionString() string {
 	return fmt.Sprintf("局域网文件与文本分享工具 %s (commit %s, built %s, %s)",
 		version, commit, buildTime, runtime.Version())
+}
+
+const (
+	githubLatestAPI   = "https://api.github.com/repos/zhongwcool/AceShare/releases/latest"
+	githubReleasesURL = "https://github.com/zhongwcool/AceShare/releases"
+	updateCacheTTL    = 6 * time.Hour
+)
+
+// updateCheckResult 是 GitHub 最新版本检测结果。
+type updateCheckResult struct {
+	Available     bool
+	LatestVersion string
+	ReleaseURL    string
+	checkedAt     time.Time
+}
+
+var (
+	updateCacheMu sync.Mutex
+	updateCache   updateCheckResult
+)
+
+// getUpdateInfo 返回缓存的更新检测结果；缓存过期时向 GitHub 拉取最新 Release。
+func getUpdateInfo() updateCheckResult {
+	updateCacheMu.Lock()
+	if !updateCache.checkedAt.IsZero() && time.Since(updateCache.checkedAt) < updateCacheTTL {
+		r := updateCache
+		updateCacheMu.Unlock()
+		return r
+	}
+	updateCacheMu.Unlock()
+
+	result := fetchLatestRelease()
+
+	updateCacheMu.Lock()
+	updateCache = result
+	updateCacheMu.Unlock()
+	return result
+}
+
+// fetchLatestRelease 查询 GitHub 最新 Release，并与当前版本比较。
+func fetchLatestRelease() updateCheckResult {
+	result := updateCheckResult{checkedAt: time.Now()}
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, githubLatestAPI, nil)
+	if err != nil {
+		return result
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "AceShare/"+version)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return result
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return result
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return result
+	}
+	if release.TagName == "" {
+		return result
+	}
+
+	result.LatestVersion = release.TagName
+	result.ReleaseURL = release.HTMLURL
+	if result.ReleaseURL == "" {
+		result.ReleaseURL = githubReleasesURL
+	}
+	result.Available = isNewerVersion(release.TagName, version)
+	return result
+}
+
+// isNewerVersion 判断 latest 是否比 current 更新。dev/unknown 视为可提示更新。
+func isNewerVersion(latest, current string) bool {
+	latest = normalizeVersion(latest)
+	current = normalizeVersion(current)
+	if latest == "" {
+		return false
+	}
+	if current == "" || current == "dev" || current == "unknown" {
+		return true
+	}
+	return compareVersions(latest, current) > 0
+}
+
+// normalizeVersion 去掉 v 前缀与预发布/构建后缀，便于比较。
+func normalizeVersion(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	return v
+}
+
+// compareVersions 比较两个形如 1.2.3 的版本号；a>b 返回 1，a<b 返回 -1，相等返回 0。
+func compareVersions(a, b string) int {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	n := len(as)
+	if len(bs) > n {
+		n = len(bs)
+	}
+	for i := 0; i < n; i++ {
+		var ai, bi int
+		if i < len(as) {
+			ai, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			bi, _ = strconv.Atoi(bs[i])
+		}
+		if ai > bi {
+			return 1
+		}
+		if ai < bi {
+			return -1
+		}
+	}
+	return 0
 }
 
 // TextItem 表示 lines/ 或 texts/ 目录下的一个文本条目。
@@ -108,6 +238,9 @@ func main() {
 		return
 	}
 
+	// 后台预热版本更新检测，避免首次打开页面时等待。
+	go func() { _ = getUpdateInfo() }()
+
 	rootDir := *dir
 	filesDir := filepath.Join(rootDir, "files")
 	linesDir := filepath.Join(rootDir, "lines")
@@ -147,15 +280,21 @@ func main() {
 		_, _ = w.Write(faviconBytes)
 	})
 
-	// 版本信息接口，供页面标题下方展示。
+	// 版本信息接口，供页面标题下方展示；附带 GitHub 新版本检测结果。
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		resp := map[string]any{
 			"version":   version,
 			"commit":    commit,
 			"buildTime": buildTime,
 			"goVersion": runtime.Version(),
-		})
+		}
+		if info := getUpdateInfo(); info.Available {
+			resp["updateAvailable"] = true
+			resp["latestVersion"] = info.LatestVersion
+			resp["releaseURL"] = info.ReleaseURL
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// 列表接口。
@@ -366,19 +505,17 @@ func dirsFingerprint(dirs ...string) string {
 // seedDemoContent 在对应目录为空时写入一个演示文件；目录非空则跳过，不覆盖用户内容。
 func seedDemoContent(filesDir, linesDir, textsDir string) {
 	if dirIsEmpty(filesDir) {
-		demo := "这是一个演示文件。把任意文件放进 files/ 目录，即可在网页上列出并下载。\n"
-		writeIfAbsent(filepath.Join(filesDir, "示例文件.txt"), demo)
+		writeBytesIfAbsent(filepath.Join(filesDir, "图片1.jpg"), demoImage1Bytes)
 	}
 	if dirIsEmpty(linesDir) {
-		demo := "这是一段演示用的单行短文本，点击右侧按钮即可一键复制。"
+		demo := "sk-kimi-oKDsFChgXRAcLdFqoBEJ62pzbrrah5XkK2PQ4f0U5q3m9H8Zqfo8319lWgRAYRGK"
 		writeIfAbsent(filepath.Join(linesDir, "示例单行文本.txt"), demo)
 	}
 	if dirIsEmpty(textsDir) {
-		demo := "这是一段演示用的长文本。\n" +
-			"lines/ 里的每个 .txt 会显示为可复制的单行（超出以省略号缩略）；\n" +
-			"texts/ 里的每个 .txt 会显示为自动换行的多行块，保留原始换行。\n" +
-			"把你的内容分别放进 lines/ 和 texts/ 目录即可。"
-		writeIfAbsent(filepath.Join(textsDir, "示例长文本.txt"), demo)
+		demo := "图片1作为首帧，一个手绘的小人在一个下雨的城市走着，这个人的比例很小，就像贴纸一样。小人走到路边，一辆汽车驶过，小人和轮胎差不多高，汽车经过溅起的水花弄了小女孩一身\n" +
+			"小女孩哇哇的哭了起来\n" +
+			"除了小女孩以外，所有的元素和场景都是极致的真实感，一镜到底，没有任何镜头的切换"
+		writeIfAbsent(filepath.Join(textsDir, "视频提示词1.txt"), demo)
 	}
 }
 
@@ -393,10 +530,15 @@ func dirIsEmpty(dir string) bool {
 
 // writeIfAbsent 仅在目标文件不存在时写入，避免覆盖用户已有文件。
 func writeIfAbsent(path, content string) {
+	writeBytesIfAbsent(path, []byte(content))
+}
+
+// writeBytesIfAbsent 仅在目标文件不存在时写入二进制内容，避免覆盖用户已有文件。
+func writeBytesIfAbsent(path string, content []byte) {
 	if _, err := os.Stat(path); err == nil {
 		return // 已存在，跳过
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o644); err != nil {
 		log.Printf("警告：写入演示文件 %s 失败：%v", path, err)
 	}
 }
@@ -576,6 +718,7 @@ func formatURL(host string, port int) string {
 func printBanner(rootDir string, ports []int) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具")
+	fmt.Println(" ")
 	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
@@ -597,7 +740,6 @@ func printBanner(rootDir string, ports []int) {
 
 	fmt.Println("----------------------------------------")
 	fmt.Println(" 按 Ctrl+C 停止服务")
-	fmt.Println("========================================")
 }
 
 // formatPorts 将端口列表格式化为「80、8000」这类说明文字。
