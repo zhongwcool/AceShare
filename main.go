@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -571,31 +572,40 @@ func formatURL(host string, port int) string {
 }
 
 // printBanner 打印访问地址等启动信息。
+// 地址只按优先端口展示一次（通常为 80），可访问端口单独列出，避免重复打印 :8000 地址。
 func printBanner(rootDir string, ports []int) {
 	fmt.Println("========================================")
-	fmt.Println(" 局域网文件与文本分享工具 已启动")
+	fmt.Println(" 局域网文件与文本分享工具")
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)
+	fmt.Printf(" 端口：  %s\n", formatPorts(ports))
 	fmt.Println("----------------------------------------")
-	for _, port := range ports {
-		fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", port))
-	}
+
+	displayPort := preferredOpenPort(ports)
+	fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", displayPort))
 
 	ips := localIPv4s()
 	if len(ips) == 0 {
 		fmt.Println(" 局域网访问地址： （未检测到可用网卡 IPv4 地址）")
 	} else {
-		for _, port := range ports {
-			for _, ip := range ips {
-				fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, port))
-			}
+		for _, ip := range ips {
+			fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, displayPort))
 		}
 	}
+
 	fmt.Println("----------------------------------------")
-	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
 	fmt.Println(" 按 Ctrl+C 停止服务")
 	fmt.Println("========================================")
+}
+
+// formatPorts 将端口列表格式化为「80、8000」这类说明文字。
+func formatPorts(ports []int) string {
+	parts := make([]string, 0, len(ports))
+	for _, p := range ports {
+		parts = append(parts, strconv.Itoa(p))
+	}
+	return strings.Join(parts, "、")
 }
 
 // preferredOpenPort 返回自动打开浏览器时优先使用的端口（80 > 8000 > 其它）。
