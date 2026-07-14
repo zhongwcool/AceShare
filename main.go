@@ -187,6 +187,20 @@ type ListResponse struct {
 	Texts []TextItem `json:"texts"`
 }
 
+// PasteRequest 是 /api/paste 的请求体。
+// Kind: "line"（单行）、"text"（长文本）、"auto"（按是否含换行自动判断，默认）。
+type PasteRequest struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
+	Kind  string `json:"kind"`
+}
+
+// PasteResponse 是 /api/paste 成功后的返回。
+type PasteResponse struct {
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+}
+
 // Broadcaster 管理所有 SSE 客户端连接，并在目录变化时向它们广播通知。
 type Broadcaster struct {
 	mu      sync.Mutex
@@ -310,6 +324,69 @@ func main() {
 		if err := enc.Encode(resp); err != nil {
 			log.Printf("编码 /api/list 失败：%v", err)
 		}
+	})
+
+	// 粘贴文本：将前端提交的内容写入 lines/ 或 texts/，随后 SSE 会通知页面刷新。
+	mux.HandleFunc("/api/paste", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 2<<20) // 最大 2MB
+		var req PasteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "请求体无效或过大", http.StatusBadRequest)
+			return
+		}
+		text := strings.ReplaceAll(req.Text, "\r\n", "\n")
+		text = strings.ReplaceAll(text, "\r", "\n")
+		text = strings.TrimSpace(text)
+		if text == "" {
+			http.Error(w, "文本内容不能为空", http.StatusBadRequest)
+			return
+		}
+
+		kind := strings.ToLower(strings.TrimSpace(req.Kind))
+		switch kind {
+		case "line", "text":
+			// 显式指定
+		case "", "auto":
+			if strings.Contains(text, "\n") {
+				kind = "text"
+			} else {
+				kind = "line"
+			}
+		default:
+			http.Error(w, "kind 须为 line、text 或 auto", http.StatusBadRequest)
+			return
+		}
+
+		targetDir := linesDir
+		if kind == "text" {
+			targetDir = textsDir
+		} else {
+			// 单行：换行压成空格，保留其余空白
+			text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+		}
+
+		title := sanitizeFilename(req.Title)
+		if title == "" {
+			title = sanitizeFilename(truncateRunes(text, 24))
+		}
+		if title == "" {
+			title = time.Now().Format("粘贴_20060102_150405")
+		}
+
+		path := uniqueTxtPath(targetDir, title)
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			log.Printf("写入粘贴文本失败 %s：%v", path, err)
+			http.Error(w, "保存失败", http.StatusInternalServerError)
+			return
+		}
+
+		savedTitle := strings.TrimSuffix(filepath.Base(path), ".txt")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(PasteResponse{Kind: kind, Title: savedTitle})
 	})
 
 	// 文件下载：使用 http.FileServer（自带路径清理，可防目录穿越），并附加下载响应头。
@@ -541,6 +618,59 @@ func writeBytesIfAbsent(path string, content []byte) {
 	if err := os.WriteFile(path, content, 0o644); err != nil {
 		log.Printf("警告：写入演示文件 %s 失败：%v", path, err)
 	}
+}
+
+// sanitizeFilename 清理标题中的非法路径字符，返回适合作为 .txt 文件名的字符串。
+// 空输入返回空串，由调用方决定默认名。
+func sanitizeFilename(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\n', '\r', '\t', '\x00':
+			b.WriteByte('_')
+		default:
+			if r < 32 {
+				b.WriteByte('_')
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	name = strings.Trim(b.String(), " .")
+	return truncateRunes(name, 80)
+}
+
+// truncateRunes 按 Unicode 字符截断，避免截断半个汉字。
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
+}
+
+// uniqueTxtPath 在 dir 下为 title 生成不冲突的 .txt 路径；若已存在则追加 _2、_3…
+func uniqueTxtPath(dir, title string) string {
+	base := title
+	path := filepath.Join(dir, base+".txt")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return path
+	}
+	for i := 2; i < 10000; i++ {
+		path = filepath.Join(dir, fmt.Sprintf("%s_%d.txt", base, i))
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return path
+		}
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s_%d.txt", base, time.Now().UnixNano()))
 }
 
 // openBrowser 用系统默认程序打开指定 URL，跨平台。

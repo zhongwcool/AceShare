@@ -252,6 +252,85 @@
   }
   .copy-feedback.err { color: var(--err); }
 
+  /* 粘贴录入 */
+  .paste-form { display: flex; flex-direction: column; gap: 10px; }
+  .paste-form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .paste-form input[type="text"],
+  .paste-form textarea {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--code-bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .paste-form input[type="text"]:focus,
+  .paste-form textarea:focus {
+    border-color: var(--accent);
+  }
+  .paste-form textarea {
+    min-height: 96px;
+    resize: vertical;
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .paste-title-row { display: none; }
+  .paste-title-row.is-open { display: block; }
+  .paste-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .paste-actions button {
+    appearance: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .paste-actions .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .paste-actions .btn-primary:hover { filter: brightness(1.08); }
+  .paste-actions .btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: none;
+  }
+  .paste-actions .btn-secondary {
+    background: var(--panel-2);
+    color: var(--text);
+  }
+  .paste-actions .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .paste-msg {
+    font-size: 12px;
+    min-height: 1.2em;
+    color: var(--text-dim);
+  }
+  .paste-msg.ok { color: var(--ok); }
+  .paste-msg.err { color: var(--err); }
+
   footer {
     margin-top: auto;
     width: 100%;
@@ -324,7 +403,7 @@
       </section>
     </div>
 
-    <!-- 右栏：单行文本 + 长文本 -->
+    <!-- 右栏：单行文本 + 长文本 + 粘贴录入 -->
     <div class="col">
       <section class="card">
         <h2>单行文本 <span class="count" id="lines-count"></span></h2>
@@ -339,6 +418,27 @@
         <div class="card-body">
           <div id="texts-status" class="status">正在加载…</div>
           <div id="texts-list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>粘贴文本</h2>
+        <div class="card-body">
+          <form class="paste-form" id="paste-form" autocomplete="off">
+            <div class="paste-title-row" id="paste-title-row">
+              <label for="paste-title">标题（可选）</label>
+              <input type="text" id="paste-title" name="title" maxlength="80" placeholder="留空则用内容前几字或时间命名" />
+            </div>
+            <div>
+              <label for="paste-text">内容</label>
+              <textarea id="paste-text" name="text" rows="4" placeholder="在此粘贴或输入文本，Ctrl+V / ⌘V" required></textarea>
+            </div>
+            <div class="paste-actions">
+              <button type="submit" class="btn-primary" id="paste-submit">保存</button>
+              <button type="button" class="btn-secondary" id="paste-add-title">添加标题</button>
+            </div>
+            <div class="paste-msg" id="paste-msg" aria-live="polite"></div>
+          </form>
         </div>
       </section>
     </div>
@@ -571,7 +671,6 @@
       });
   }
 
-  // 标题下方版本信息；若有新版本则在末尾追加可点击提示。
   function loadVersion() {
     var node = document.getElementById("app-version");
     if (!node) return;
@@ -598,6 +697,81 @@
         }
       })
       .catch(function () {});
+  }
+
+  // 粘贴录入：提交到 /api/paste，成功后 SSE 会自动刷新列表。
+  function setPasteMsg(message, kind) {
+    var node = document.getElementById("paste-msg");
+    if (!node) return;
+    node.textContent = message || "";
+    node.className = "paste-msg" + (kind ? " " + kind : "");
+  }
+
+  function bindPasteForm() {
+    var form = document.getElementById("paste-form");
+    var textEl = document.getElementById("paste-text");
+    var titleEl = document.getElementById("paste-title");
+    var titleRow = document.getElementById("paste-title-row");
+    var submitBtn = document.getElementById("paste-submit");
+    var addTitleBtn = document.getElementById("paste-add-title");
+    if (!form || !textEl) return;
+
+    addTitleBtn.addEventListener("click", function () {
+      titleRow.classList.add("is-open");
+      addTitleBtn.hidden = true;
+      titleEl.focus();
+    });
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var text = textEl.value;
+      if (!String(text).trim()) {
+        setPasteMsg("请先粘贴或输入内容", "err");
+        textEl.focus();
+        return;
+      }
+      submitBtn.disabled = true;
+      setPasteMsg("正在保存…", "");
+      var title = titleRow.classList.contains("is-open") ? (titleEl.value || "") : "";
+      fetch("/api/paste", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          title: title,
+          text: text,
+          kind: "auto"
+        })
+      })
+        .then(function (resp) {
+          return resp.text().then(function (body) {
+            if (!resp.ok) {
+              throw new Error(body || ("服务器返回 " + resp.status));
+            }
+            try {
+              return JSON.parse(body);
+            } catch (e) {
+              return {};
+            }
+          });
+        })
+        .then(function (data) {
+          var kindLabel = data.kind === "line" ? "单行文本" : "长文本";
+          var savedTitle = data.title || "";
+          setPasteMsg("已保存为" + kindLabel + (savedTitle ? "「" + savedTitle + "」" : ""), "ok");
+          textEl.value = "";
+          titleEl.value = "";
+          titleRow.classList.remove("is-open");
+          addTitleBtn.hidden = false;
+          // SSE 通常会自动刷新；此处再拉一次，确保即时看到结果。
+          scheduleReload();
+        })
+        .catch(function (err) {
+          setPasteMsg("保存失败：" + (err && err.message ? err.message : err), "err");
+        })
+        .then(function () {
+          submitBtn.disabled = false;
+        });
+    });
   }
 
   // 自动刷新：优先用 SSE 实时接收变化通知；SSE 不可用或断线时回退为定时轮询。
@@ -648,6 +822,7 @@
   function init() {
     load();
     loadVersion();
+    bindPasteForm();
     startAutoRefresh();
   }
 
