@@ -12,15 +12,18 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/grandcat/zeroconf"
 )
 
 //go:embed index.html
@@ -243,6 +246,7 @@ func main() {
 	port := flag.Int("port", 0, "监听端口；0=自动同时监听 80 与 8000。也可显式指定单个端口如 8000")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
 	open := flag.Bool("open", true, "启动后自动用默认浏览器打开本机页面（-open=false 可禁用）")
+	mdnsEnabled := flag.Bool("mdns", true, "通过 mDNS/Bonjour 在局域网宣告服务，便于客户端免 IP 发现（-mdns=false 可禁用）")
 	showVersion := flag.Bool("version", false, "打印版本信息后退出")
 	flag.BoolVar(showVersion, "v", false, "打印版本信息后退出（-version 简写）")
 	flag.Parse()
@@ -460,14 +464,32 @@ func main() {
 		boundPorts = []int{singlePort}
 	}
 
-	printBanner(rootDir, boundPorts)
+	displayPort := preferredOpenPort(boundPorts)
+	printBanner(rootDir, boundPorts, *mdnsEnabled)
+
+	// mDNS/Bonjour：宣告主端口，供 Android / iOS / Apple TV 等客户端自动发现。
+	var mdnsServer *zeroconf.Server
+	if *mdnsEnabled {
+		mdnsServer, err = registerMDNS(displayPort, boundPorts)
+		if err != nil {
+			log.Printf("提示：mDNS 宣告失败（客户端仍可通过 IP 访问）：%v", err)
+		}
+	} else {
+		log.Printf("提示：已禁用 mDNS 宣告（-mdns=false）")
+	}
+	shutdownMDNS := func() {
+		if mdnsServer != nil {
+			mdnsServer.Shutdown()
+			mdnsServer = nil
+		}
+	}
 
 	// 启动后自动打开本机页面。优先使用 192.168.* 局域网地址，不使用 localhost。
 	if *open {
 		if host := preferredLANHost(); host == "" {
 			log.Printf("提示：未检测到局域网 IPv4 地址，跳过自动打开浏览器")
 		} else {
-			openURL := formatURL(host, preferredOpenPort(boundPorts))
+			openURL := formatURL(host, displayPort)
 			go func() {
 				// 稍等片刻，确保服务已开始接受连接。
 				time.Sleep(300 * time.Millisecond)
@@ -487,8 +509,18 @@ func main() {
 			}
 		}(ln)
 	}
-	if err := <-errCh; err != nil {
+
+	// 等待 Ctrl+C / SIGTERM，退出前注销 mDNS，避免局域网残留幽灵服务。
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	select {
+	case err := <-errCh:
+		shutdownMDNS()
 		log.Fatalf("HTTP 服务异常退出：%v", err)
+	case sig := <-sigCh:
+		log.Printf("收到信号 %v，正在停止服务…", sig)
+		shutdownMDNS()
+		_ = server.Close()
 	}
 }
 
@@ -845,7 +877,7 @@ func formatURL(host string, port int) string {
 
 // printBanner 打印访问地址等启动信息。
 // 地址只按优先端口展示一次（通常为 80），可访问端口单独列出，避免重复打印 :8000 地址。
-func printBanner(rootDir string, ports []int) {
+func printBanner(rootDir string, ports []int, mdnsEnabled bool) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具")
 	fmt.Println(" ")
@@ -866,6 +898,12 @@ func printBanner(rootDir string, ports []int) {
 		for _, ip := range ips {
 			fmt.Printf(" 局域网访问地址： %s\n", formatURL(ip, displayPort))
 		}
+	}
+
+	if mdnsEnabled {
+		fmt.Println("----------------------------------------")
+		fmt.Printf(" mDNS 服务类型： %s.%s\n", mdnsServiceType, mdnsDomain)
+		fmt.Printf(" mDNS 实例名：   %s\n", mdnsInstanceName())
 	}
 
 	fmt.Println("----------------------------------------")

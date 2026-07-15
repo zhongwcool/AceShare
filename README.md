@@ -44,6 +44,7 @@
 | `-port`    | 监听端口；`0`=自动**同时**监听 **80** 与 **8000**；也可显式指定单个端口 | `0`（自动）        |
 | `-dir`     | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录 |
 | `-open`    | 启动后自动用默认浏览器打开本机页面               | `true`             |
+| `-mdns`    | 通过 mDNS/Bonjour 在局域网宣告服务，便于客户端免 IP 发现 | `true`             |
 | `-version` | 打印版本信息后退出（简写 `-v`）                  | -                  |
 
 示例：
@@ -59,6 +60,28 @@
 > 提示：默认会**同时**监听 **80** 和 **8000** 两个端口；控制台地址按优先端口（通常为 80）展示，可访问端口单独列出。若某个端口被占用或无权限绑定，会跳过该端口并继续启动；两个都失败时才回退到 8001 及后续端口。在 Windows 上绑定 80 可能需要管理员权限。
 
 > 提示：服务监听 `0.0.0.0`，因此局域网可访问。若无法从其他设备访问，请检查系统防火墙是否放行了对应端口。
+
+## 局域网自动发现（mDNS / Bonjour）
+
+启动后默认会通过 **mDNS（Bonjour / DNS-SD）** 在局域网宣告自身，Android TV / iOS / Apple TV 等客户端无需手动输入 IP 即可发现并打开。
+
+| 字段 | 值 |
+| ---- | -- |
+| 服务类型 | `_aceshare._tcp.local.` |
+| 实例名 | `AceShare (<主机名>)` |
+| 端口 | 与控制台展示的优先访问端口一致（通常为 80，否则为实际绑定端口） |
+| TXT | `txtvers=1`、`version=…`、`path=/`；多端口时另有 `ports=80,8000` |
+
+客户端浏览类型：
+
+- **Android**：`NsdManager`，`serviceType = "_aceshare._tcp"`
+- **Apple（iOS / tvOS）**：`NWBrowser` / Bonjour，类型 `_aceshare._tcp.`；Info.plist 需声明 `NSBonjourServices` 与 `NSLocalNetworkUsageDescription`
+
+不需要发现时可关闭：
+
+```bash
+./aceshare -mdns=false
+```
 
 ## HTTP 接口
 
