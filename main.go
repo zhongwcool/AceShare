@@ -393,7 +393,8 @@ func main() {
 		_ = json.NewEncoder(w).Encode(PasteResponse{Kind: kind, Title: savedTitle})
 	})
 
-	// 文件下载：使用 http.FileServer（自带路径清理，可防目录穿越），并附加下载响应头。
+	// 文件下载：使用 http.FileServer（自带路径清理，可防目录穿越）。
+	// 默认附加 attachment 下载头；?inline=1 时改为 inline，供页面内预览。
 	fileServer := http.StripPrefix("/files/", downloadHeaders(http.FileServer(noDirListing{http.Dir(filesDir)})))
 	mux.Handle("/files/", fileServer)
 
@@ -789,12 +790,17 @@ func scanTexts(dir string) []TextItem {
 	return result
 }
 
-// downloadHeaders 为文件请求附加 Content-Disposition，使浏览器以下载方式处理。
+// downloadHeaders 为文件请求附加 Content-Disposition。
+// 默认 attachment（强制下载）；查询参数 inline=1 时改为 inline，供页面内预览。
 func downloadHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := path_Base(r.URL.Path)
 		if name != "" && name != "/" {
-			w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(name))
+			if r.URL.Query().Get("inline") == "1" {
+				w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(name))
+			} else {
+				w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(name))
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
