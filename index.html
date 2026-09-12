@@ -584,6 +584,8 @@
     font-size: 13px;
     line-height: 1.5;
   }
+  /* 空内容时提示「点一下即可尝试粘贴」 */
+  .paste-form textarea:placeholder-shown { cursor: pointer; }
   .paste-title-row { display: none; }
   .paste-title-row.is-open { display: block; }
   .paste-actions {
@@ -629,6 +631,7 @@
   }
   .paste-msg.ok { color: var(--ok); }
   .paste-msg.err { color: var(--err); }
+  .paste-msg a { color: var(--accent); }
 
   footer {
     margin-top: auto;
@@ -752,7 +755,7 @@
             </div>
             <div>
               <label for="paste-text">内容</label>
-              <textarea id="paste-text" name="text" rows="4" placeholder="在此粘贴或输入文本，Ctrl+V / ⌘V" required></textarea>
+              <textarea id="paste-text" name="text" rows="4" placeholder="点击此处自动粘贴，或直接输入" required></textarea>
             </div>
             <div class="paste-actions">
               <button type="submit" class="btn-primary" id="paste-submit">保存</button>
@@ -852,6 +855,129 @@
 
   function setCount(id, n) {
     document.getElementById(id).textContent = n > 0 ? n : "";
+  }
+
+  // 设备粗判：用来给出各平台可读的粘贴提示（iOS 长按、桌面 Ctrl/⌘V）。
+  function detectClient() {
+    var ua = navigator.userAgent || "";
+    var isiOS = /iP(hone|ad|od)/.test(ua) ||
+      (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
+    var isAndroid = /Android/i.test(ua);
+    var isMac = /Mac OS X/.test(ua) && !isiOS;
+    return { isiOS: isiOS, isAndroid: isAndroid, isMac: isMac, isMobile: isiOS || isAndroid };
+  }
+
+  function isLoopbackHost() {
+    var h = (location.hostname || "").toLowerCase();
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
+  }
+
+  function loopbackPageURL() {
+    var port = location.port;
+    if (!port || port === "80") return "http://localhost/";
+    return "http://localhost:" + port + "/";
+  }
+
+  // 读取剪贴板：仅安全上下文（HTTPS / localhost / 127.0.0.1）可用。
+  // 通过 http://192.168.x.x 访问时 Chrome 不会暴露 clipboard.readText。
+  function canReadClipboardApi() {
+    return !!(navigator.clipboard && (navigator.clipboard.readText || navigator.clipboard.read));
+  }
+
+  function queryClipboardPermission() {
+    if (!navigator.permissions || !navigator.permissions.query) {
+      return Promise.resolve("");
+    }
+    try {
+      return navigator.permissions.query({ name: "clipboard-read" }).then(
+        function (status) { return status && status.state ? status.state : ""; },
+        function () { return ""; }
+      );
+    } catch (e) {
+      return Promise.resolve("");
+    }
+  }
+
+  function readClipboardText() {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      return navigator.clipboard.readText();
+    }
+    if (navigator.clipboard && navigator.clipboard.read) {
+      return navigator.clipboard.read().then(function (items) {
+        if (!items || !items.length) return "";
+        var i;
+        for (i = 0; i < items.length; i++) {
+          if (items[i].types && items[i].types.indexOf("text/plain") >= 0) {
+            return items[i].getType("text/plain").then(function (blob) {
+              return blob.text();
+            });
+          }
+        }
+        return "";
+      });
+    }
+    return Promise.reject(new Error("unavailable"));
+  }
+
+  // 网页没有单独的 clipboard.requestPermission。必须在点击的同一回合里调用
+  // readText/read，系统才会弹出 iOS「允许粘贴」或 Chrome 权限框；允许后返回文本。
+  // 不能先 await permissions.query，否则会丢掉用户手势，弹窗出不来。
+  function requestClipboardAndRead() {
+    var readP = readClipboardText();
+    return readP.catch(function (err) {
+      if (!err || err.name !== "NotAllowedError") throw err;
+      return queryClipboardPermission().then(function (state) {
+        if (state === "granted") return readClipboardText();
+        throw err;
+      });
+    });
+  }
+
+  function pasteShortcutLabel(client) {
+    if (client.isiOS || client.isAndroid) return "长按粘贴";
+    return client.isMac ? "⌘V" : "Ctrl+V";
+  }
+
+  function clipboardPermissionHint(client) {
+    if (client.isiOS) return "请在顶部点「允许粘贴」";
+    if (client.isAndroid) return "请允许读取剪贴板";
+    return "请在弹窗中允许读取剪贴板";
+  }
+
+  function defaultPastePlaceholder(client) {
+    if (canReadClipboardApi()) {
+      if (client.isiOS) return "点按后允许粘贴，也可直接输入";
+      if (client.isAndroid) return "点按后允许读取剪贴板，也可直接输入";
+      return "点击后允许读取剪贴板，或直接输入 / " + (client.isMac ? "⌘V" : "Ctrl+V");
+    }
+    if (client.isMobile) return "点按后长按粘贴，或直接输入";
+    return "在此粘贴或输入文本，" + (client.isMac ? "⌘V" : "Ctrl+V");
+  }
+
+  function clipboardFallbackMsg(err, client, permState) {
+    var name = err && err.name;
+    if (permState === "denied" || name === "NotAllowedError") {
+      if (permState === "denied") {
+        if (client.isMobile) return "已拒绝剪贴板权限，请长按输入框选择「粘贴」";
+        return "已拒绝剪贴板权限，请点地址栏左侧重新允许，或按 " + pasteShortcutLabel(client) + " 粘贴";
+      }
+      if (client.isiOS) return "未允许粘贴，可再点一次，或长按输入框选择「粘贴」";
+      if (client.isAndroid) return "未允许读取剪贴板，可再点一次，或长按输入框选择「粘贴」";
+      return "未允许读取剪贴板，可再点一次，或按 " + pasteShortcutLabel(client) + " 粘贴";
+    }
+    if (!window.isSecureContext && !client.isMobile) {
+      return "当前地址下 Chrome 不能读剪贴板，本机请改用";
+    }
+    if (client.isMobile) return "当前浏览器无法自动读取剪贴板，请长按输入框选择「粘贴」";
+    return "当前浏览器无法自动读取剪贴板，请按 " + pasteShortcutLabel(client) + " 粘贴";
+  }
+
+  function clipboardFallbackLink(err, client) {
+    if (client.isMobile) return "";
+    if (!window.isSecureContext || (err && err.name === "SecurityError")) {
+      return loopbackPageURL();
+    }
+    return "";
   }
 
   // 复制到剪贴板：优先 navigator.clipboard，降级 execCommand。
@@ -1544,11 +1670,20 @@
   }
 
   // 粘贴录入：提交到 /api/paste，成功后 SSE 会自动刷新列表。
-  function setPasteMsg(message, kind) {
+  function setPasteMsg(message, kind, linkHref, linkLabel) {
     var node = document.getElementById("paste-msg");
     if (!node) return;
-    node.textContent = message || "";
+    node.textContent = "";
     node.className = "paste-msg" + (kind ? " " + kind : "");
+    if (!message) return;
+    node.appendChild(document.createTextNode(message));
+    if (linkHref) {
+      node.appendChild(document.createTextNode(" "));
+      var a = document.createElement("a");
+      a.href = linkHref;
+      a.textContent = linkLabel || linkHref;
+      node.appendChild(a);
+    }
   }
 
   function bindPasteForm() {
@@ -1559,6 +1694,45 @@
     var submitBtn = document.getElementById("paste-submit");
     var addTitleBtn = document.getElementById("paste-add-title");
     if (!form || !textEl) return;
+
+    var client = detectClient();
+    var unavailableHintShown = false;
+    var fillSeq = 0;
+    textEl.placeholder = defaultPastePlaceholder(client);
+
+    // 点击空输入框：当场 request+read（系统弹窗像 iOS「允许粘贴」）。
+    // 已有内容时不覆盖；权限失败可再点一次重试。
+    textEl.addEventListener("click", function () {
+      if (String(textEl.value || "")) return;
+      var seq = ++fillSeq;
+      if (!canReadClipboardApi()) {
+        if (!unavailableHintShown) {
+          unavailableHintShown = true;
+          setPasteMsg(clipboardFallbackMsg(null, client, ""), "", clipboardFallbackLink(null, client));
+        }
+        return;
+      }
+      setPasteMsg(clipboardPermissionHint(client), "");
+      requestClipboardAndRead()
+        .then(function (text) {
+          if (seq !== fillSeq) return;
+          if (String(textEl.value || "")) return;
+          if (!String(text || "").trim()) {
+            setPasteMsg("剪贴板里没有文本，可直接输入", "");
+            return;
+          }
+          textEl.value = text;
+          textEl.focus();
+          setPasteMsg("已从剪贴板填入，确认后点保存", "ok");
+        })
+        .catch(function (err) {
+          if (seq !== fillSeq) return;
+          queryClipboardPermission().then(function (state) {
+            if (seq !== fillSeq) return;
+            setPasteMsg(clipboardFallbackMsg(err, client, state), "", clipboardFallbackLink(err, client));
+          });
+        });
+    });
 
     addTitleBtn.addEventListener("click", function () {
       titleRow.classList.add("is-open");

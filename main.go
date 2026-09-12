@@ -277,9 +277,18 @@ func main() {
 	mux := http.NewServeMux()
 
 	// 首页：内嵌的 index.html。
+	// 本机用局域网 IP 打开时，重定向到 localhost，否则 Chrome 会禁止读取剪贴板。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("stay") != "1" && !isLoopbackRequestHost(r) && isRequestFromThisMachine(r) {
+			target := formatURL("localhost", portFromRequest(r))
+			if q := r.URL.RawQuery; q != "" {
+				target += "?" + q
+			}
+			http.Redirect(w, r, target, http.StatusFound)
 			return
 		}
 		data, err := embeddedFiles.ReadFile("index.html")
@@ -485,20 +494,16 @@ func main() {
 		}
 	}
 
-	// 启动后自动打开本机页面。优先使用 192.168.* 局域网地址，不使用 localhost。
+	// 启动后打开 localhost。Chrome 只在安全上下文（localhost / HTTPS）允许读剪贴板；
+	// 局域网地址仍打印在横幅中，供手机访问。
 	if *open {
-		if host := preferredLANHost(); host == "" {
-			log.Printf("提示：未检测到局域网 IPv4 地址，跳过自动打开浏览器")
-		} else {
-			openURL := formatURL(host, displayPort)
-			go func() {
-				// 稍等片刻，确保服务已开始接受连接。
-				time.Sleep(300 * time.Millisecond)
-				if err := openBrowser(openURL); err != nil {
-					log.Printf("提示：未能自动打开浏览器，请手动访问 %s（%v）", openURL, err)
-				}
-			}()
-		}
+		openURL := formatURL("localhost", displayPort)
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			if err := openBrowser(openURL); err != nil {
+				log.Printf("提示：未能自动打开浏览器，请手动访问 %s（%v）", openURL, err)
+			}
+		}()
 	}
 
 	server := &http.Server{Handler: mux}
@@ -925,6 +930,57 @@ func formatPorts(ports []int) string {
 	return strings.Join(parts, "、")
 }
 
+// portFromRequest 从 Host 头解析端口；缺省按 80/443。
+func portFromRequest(r *http.Request) int {
+	_, portStr, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		if r.TLS != nil {
+			return 443
+		}
+		return 80
+	}
+	p, convErr := strconv.Atoi(portStr)
+	if convErr != nil || p <= 0 {
+		return 80
+	}
+	return p
+}
+
+func hostWithoutPort(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.Trim(host, "[]")
+}
+
+func isLoopbackRequestHost(r *http.Request) bool {
+	h := strings.ToLower(hostWithoutPort(r.Host))
+	return h == "localhost" || h == "127.0.0.1" || h == "::1"
+}
+
+func requestRemoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// isRequestFromThisMachine 判断浏览器是否跑在分享电脑本机（而不是手机或另一台电脑）。
+func isRequestFromThisMachine(r *http.Request) bool {
+	ip := requestRemoteIP(r)
+	parsed := net.ParseIP(ip)
+	if parsed != nil && parsed.IsLoopback() {
+		return true
+	}
+	for _, local := range localIPv4s() {
+		if ip == local {
+			return true
+		}
+	}
+	return false
+}
+
 // preferredOpenPort 返回自动打开浏览器时优先使用的端口（80 > 8000 > 其它）。
 func preferredOpenPort(ports []int) int {
 	for _, want := range []int{80, 8000} {
@@ -938,21 +994,6 @@ func preferredOpenPort(ports []int) int {
 		return ports[0]
 	}
 	return 8000
-}
-
-// preferredLANHost 返回用于自动打开浏览器的局域网主机名。
-// 优先 192.168.*；若无则取第一个可用局域网 IPv4；不使用 localhost。
-func preferredLANHost() string {
-	ips := localIPv4s()
-	for _, ip := range ips {
-		if strings.HasPrefix(ip, "192.168.") {
-			return ip
-		}
-	}
-	if len(ips) > 0 {
-		return ips[0]
-	}
-	return ""
 }
 
 // localIPv4s 返回所有非回环网卡的 IPv4 地址。
