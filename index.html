@@ -518,6 +518,21 @@
     margin: -0.15rem -0.25rem 0 0;
   }
   .item-del:hover { color: var(--err); }
+  @media (hover: hover) and (pointer: fine) {
+    .item-del,
+    ul.file-list .file-action.is-danger {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
+    }
+    .item:hover .item-del,
+    .item:focus-within .item-del,
+    ul.file-list .file-row:hover .file-action.is-danger,
+    ul.file-list .file-row:focus-within .file-action.is-danger {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
 
   /* 单行文本（lines）：圆角浅色框 + 框内透明圆形复制按钮，内容自动换行不出横向滚动条 */
   .copy-snippet {
