@@ -204,6 +204,13 @@ type PasteResponse struct {
 	Title string `json:"title"`
 }
 
+// DeleteRequest 是 /api/delete 的请求体。
+// Kind: "file"（files/）、"line"（lines/）、"text"（texts/）；Name 为文件名或文本标题。
+type DeleteRequest struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
 // Broadcaster 管理所有 SSE 客户端连接，并在目录变化时向它们广播通知。
 type Broadcaster struct {
 	mu      sync.Mutex
@@ -241,7 +248,7 @@ func (b *Broadcaster) Notify() {
 }
 
 func main() {
-	defaultDir := executableDir()
+	defaultDir := defaultShareDir()
 
 	port := flag.Int("port", 0, "监听端口；0=自动同时监听 80 与 8000。也可显式指定单个端口如 8000")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
@@ -400,6 +407,63 @@ func main() {
 		savedTitle := strings.TrimSuffix(filepath.Base(path), ".txt")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(PasteResponse{Kind: kind, Title: savedTitle})
+	})
+
+	// 删除：移除 files/ 中的文件，或 lines/、texts/ 中对应的 .txt。
+	mux.HandleFunc("/api/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+		var req DeleteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "请求体无效", http.StatusBadRequest)
+			return
+		}
+		kind := strings.ToLower(strings.TrimSpace(req.Kind))
+		name := strings.TrimSpace(req.Name)
+		var dir string
+		switch kind {
+		case "file":
+			dir = filesDir
+		case "line":
+			dir = linesDir
+			name += ".txt"
+		case "text":
+			dir = textsDir
+			name += ".txt"
+		default:
+			http.Error(w, "kind 须为 file、line 或 text", http.StatusBadRequest)
+			return
+		}
+		full, err := resolveInDir(dir, name)
+		if err != nil {
+			http.Error(w, "无效文件名", http.StatusBadRequest)
+			return
+		}
+		info, err := os.Lstat(full)
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		if err != nil {
+			log.Printf("读取待删除文件失败 %s：%v", full, err)
+			http.Error(w, "删除失败", http.StatusInternalServerError)
+			return
+		}
+		if !info.Mode().IsRegular() {
+			http.Error(w, "只能删除普通文件", http.StatusBadRequest)
+			return
+		}
+		if err := os.Remove(full); err != nil {
+			log.Printf("删除文件失败 %s：%v", full, err)
+			http.Error(w, "删除失败", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
 	// 文件下载：使用 http.FileServer（自带路径清理，可防目录穿越）。
@@ -724,6 +788,82 @@ func openBrowser(target string) error {
 	}
 }
 
+// defaultShareDir 选择默认根目录（内含 files/ lines/ texts）。
+// 双击运行时用可执行文件所在目录；go run / IDE 调试时二进制在临时目录，改用当前工作目录，
+// 这样项目里的 files/ 才会被读到。
+func defaultShareDir() string {
+	exeDir := executableDir()
+	wd, err := os.Getwd()
+	if err != nil || wd == "" {
+		return exeDir
+	}
+	if sameFilePath(exeDir, wd) {
+		return exeDir
+	}
+	if isEphemeralExeDir(exeDir) {
+		return wd
+	}
+	if hasDir(filepath.Join(wd, "files")) && !hasDir(filepath.Join(exeDir, "files")) {
+		return wd
+	}
+	return exeDir
+}
+
+func isEphemeralExeDir(dir string) bool {
+	p := filepath.ToSlash(strings.ToLower(dir))
+	if strings.Contains(p, "/go-build") {
+		return true
+	}
+	if strings.Contains(p, "/jetbrains/") && strings.Contains(p, "/tmp/") {
+		return true
+	}
+	if strings.Contains(p, "/goland") && (strings.Contains(p, "/tmp/") || strings.Contains(p, "/temp/")) {
+		return true
+	}
+	return false
+}
+
+func sameFilePath(a, b string) bool {
+	aa, err1 := filepath.Abs(a)
+	bb, err2 := filepath.Abs(b)
+	if err1 != nil || err2 != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
+}
+
+func hasDir(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
+}
+
+// resolveInDir 把 name 解析为 dir 下的文件路径，拒绝目录穿越与子路径。
+func resolveInDir(dir, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return "", fmt.Errorf("无效文件名")
+	}
+	if name != filepath.Base(name) {
+		return "", fmt.Errorf("无效文件名")
+	}
+	dirAbs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	fullAbs, err := filepath.Abs(filepath.Join(dirAbs, name))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(dirAbs, fullAbs)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("无效路径")
+	}
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("无效路径")
+	}
+	return fullAbs, nil
+}
+
 // executableDir 返回可执行文件所在目录；失败时回退到当前工作目录。
 func executableDir() string {
 	exe, err := os.Executable()
@@ -896,6 +1036,7 @@ func printBanner(rootDir string, ports []int, mdnsEnabled bool) {
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)
+	fmt.Printf(" 文件目录：%s\n", filepath.Join(rootDir, "files"))
 	fmt.Printf(" 端口：  %s\n", formatPorts(ports))
 	fmt.Println("----------------------------------------")
 

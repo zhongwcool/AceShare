@@ -42,7 +42,7 @@
 | 参数     | 说明                                             | 默认值             |
 | -------- | ------------------------------------------------ | ------------------ |
 | `-port`    | 监听端口；`0`=自动**同时**监听 **80** 与 **8000**；也可显式指定单个端口 | `0`（自动）        |
-| `-dir`     | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录 |
+| `-dir`     | 根目录（内含 files/lines/texts）                 | 可执行文件所在目录；`go run` / IDE 调试时用当前工作目录 |
 | `-open`    | 启动后自动用默认浏览器打开本机页面               | `true`             |
 | `-mdns`    | 通过 mDNS/Bonjour 在局域网宣告服务，便于客户端免 IP 发现 | `true`             |
 | `-version` | 打印版本信息后退出（简写 `-v`）                  | -                  |
@@ -97,6 +97,7 @@
 ```
 
 - `GET /files/<name>` —— 下载 `files/` 下对应文件（附带下载响应头，并防止目录穿越）。
+- `POST /api/delete` —— 删除条目。JSON：`{"kind":"file|line|text","name":"..."}`。`file` 的 `name` 为 `files/` 下文件名；`line` / `text` 的 `name` 为标题（不含 `.txt`）。
 - `GET /api/version` —— 返回版本信息 JSON。字段包括 `version` / `commit` / `buildTime` / `goVersion`；若检测到 [GitHub Releases](https://github.com/zhongwcool/AceShare/releases) 有更新，还会附带 `updateAvailable`、`latestVersion`、`releaseURL`。
 - `GET /api/events` —— SSE（Server-Sent Events）事件流。目录内容变化时推送 `change` 事件，网页据此自动刷新。
 - `GET /favicon.ico` —— 内嵌的网站图标。

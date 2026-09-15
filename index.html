@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 <title>局域网文件与文本分享</title>
 <style>
@@ -41,7 +41,13 @@
   }
 
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; overflow-x: hidden; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
@@ -49,11 +55,19 @@
     color: var(--text);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
-  .layout { flex: 1 0 auto; }
+  .page {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
+  }
+  body.is-preview .page { overflow: hidden; }
 
   header {
     padding: 20px 24px 12px;
@@ -90,6 +104,10 @@
   }
 
   .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  @media (max-width: 899px) {
+    .col-texts { order: 1; }
+    .col-files { order: 2; }
+  }
 
   .card {
     background: var(--panel);
@@ -202,6 +220,7 @@
     color: var(--accent);
     background: rgba(127, 127, 127, 0.14);
   }
+  ul.file-list .file-action.is-danger:hover { color: var(--err); }
   ul.file-list .file-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* 相册网格（图片 / 视频） */
@@ -296,12 +315,34 @@
     opacity: 0;
     transition: opacity 0.15s, background 0.15s;
   }
-  .media-dl svg { width: 15px; height: 15px; }
-  .media-dl:hover { background: rgba(0,0,0,.7); }
+  .media-del {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0,0,0,.45);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .media-dl svg, .media-del svg { width: 15px; height: 15px; }
+  .media-dl:hover, .media-del:hover { background: rgba(0,0,0,.7); }
   .media-tile:hover .media-name,
   .media-tile:hover .media-dl,
+  .media-tile:hover .media-del,
   .media-tile:focus-within .media-name,
-  .media-tile:focus-within .media-dl { opacity: 1; }
+  .media-tile:focus-within .media-dl,
+  .media-tile:focus-within .media-del { opacity: 1; }
   .media-hover {
     position: fixed;
     z-index: 950;
@@ -362,6 +403,7 @@
   .preview-dialog.is-media .preview-title { color: #e6edf3; }
   .preview-dialog.is-media .preview-icon-btn { color: #9aa3ad; }
   .preview-dialog.is-media .preview-icon-btn:hover { color: #e6edf3; background: rgba(255,255,255,.1); }
+  .preview-dialog.is-media .preview-icon-btn.is-danger:hover { color: #f85149; }
   .preview-header {
     display: flex;
     align-items: center;
@@ -396,6 +438,7 @@
     transition: background 0.15s, color 0.15s;
   }
   .preview-icon-btn:hover { background: rgba(127, 127, 127, 0.14); color: var(--text); }
+  .preview-icon-btn.is-danger:hover { color: var(--err); }
   .preview-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .preview-icon-btn svg { width: 18px; height: 18px; }
   .preview-body {
@@ -456,13 +499,25 @@
   /* 文本条目通用（参考 nginx 原页风格）*/
   .item { margin-top: 0.55rem; }
   .item:first-child { margin-top: 0.35rem; }
+  .item-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
   .item .item-title {
+    flex: 1 1 auto;
+    min-width: 0;
     margin: 0.05rem 0 0.1rem;
     font-size: 0.92rem;
     font-weight: 700;
     color: var(--text);
     word-break: break-all;
   }
+  .item-del {
+    flex: none;
+    margin: -0.15rem -0.25rem 0 0;
+  }
+  .item-del:hover { color: var(--err); }
 
   /* 单行文本（lines）：圆角浅色框 + 框内透明圆形复制按钮，内容自动换行不出横向滚动条 */
   .copy-snippet {
@@ -634,12 +689,19 @@
   .paste-msg a { color: var(--accent); }
 
   footer {
-    margin-top: auto;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
     width: 100%;
-    padding: 20px 24px 24px;
+    padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px));
     text-align: center;
     color: var(--text-dim);
     font-size: 12px;
+    background: color-mix(in srgb, var(--bg) 58%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
   footer a {
     color: inherit;
@@ -649,6 +711,55 @@
   footer a:hover {
     color: var(--accent);
   }
+  .undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(3.4rem + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(440px, calc(100vw - 24px));
+    padding: 10px 10px 10px 16px;
+    border-radius: 12px;
+    background: #1f2328;
+    color: #f4f5f7;
+    box-shadow: 0 10px 28px rgba(0,0,0,.28);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .undo-toast[hidden] { display: none; }
+  .undo-toast__msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .undo-toast__count {
+    flex: none;
+    min-width: 2.2em;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+    text-align: right;
+    color: #c5d4f5;
+  }
+  .undo-toast__btn {
+    flex: none;
+    margin: 0;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #8cb4ff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .undo-toast__btn:hover { background: rgba(255,255,255,.08); }
+  .undo-toast__btn:focus-visible { outline: 2px solid #8cb4ff; outline-offset: 2px; }
   /* ============ 手机 / 窄屏适配 ============
      放在所有基础样式之后，确保能正确覆盖桌面端卡片样式。
      去掉卡片背景/边框/阴影/内边距，仅靠字体与排版分区。 */
@@ -669,7 +780,7 @@
       overflow: visible;
       margin-top: 22px;
     }
-    .col > .card:first-child { margin-top: 6px; }
+    .col-texts > .card:first-child { margin-top: 6px; }
 
     /* 区块标题：去掉分隔线与内边距，用字号/字重区分 */
     .card > h2 {
@@ -684,11 +795,11 @@
     ul.file-list .file-main { padding: 4px 0; font-size: 15px; }
     .file-groups { gap: 20px; }
     .media-grid {
-      margin: 0 -16px;
-      gap: 2px;
+      gap: 8px;
+      grid-template-columns: repeat(3, 1fr);
     }
-    .media-tile { border-radius: 0; }
-    .media-dl { opacity: 0.92; }
+    .media-tile { border-radius: 10px; }
+    .media-dl, .media-del { opacity: 0.92; }
     .preview-overlay { padding: 0; }
     .preview-dialog,
     .preview-dialog:not(.is-media) {
@@ -705,19 +816,20 @@
     .preview-body iframe { height: calc(100vh - 54px); }
     .copy-snippet__text, .copy-multiline__text { font-size: 0.9rem; }
 
-    footer { padding: 20px 16px 20px; margin-top: 12px; }
+    footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
   }
 </style>
 </head>
 <body>
-  <header>
-    <h1>局域网文件与文本分享</h1>
-    <div id="app-version" class="app-version"></div>
-  </header>
+  <div class="page">
+    <header>
+      <h1>局域网文件与文本分享</h1>
+      <div id="app-version" class="app-version"></div>
+    </header>
 
   <div class="layout">
     <!-- 左栏：文件列表 -->
-    <div class="col">
+    <div class="col col-files">
       <section class="card">
         <h2>文件下载 <span class="count" id="files-count"></span></h2>
         <div class="card-body">
@@ -728,7 +840,7 @@
     </div>
 
     <!-- 右栏：单行文本 + 长文本 + 粘贴录入 -->
-    <div class="col">
+    <div class="col col-texts">
       <section class="card">
         <h2>单行文本 <span class="count" id="lines-count"></span></h2>
         <div class="card-body">
@@ -767,6 +879,7 @@
       </section>
     </div>
   </div>
+  </div>
 
   <div id="media-hover" class="media-hover" hidden>
     <img id="media-hover-img" alt="" />
@@ -778,12 +891,19 @@
       <div class="preview-header">
         <div class="preview-title" id="preview-title"></div>
         <div class="preview-actions">
+          <button type="button" id="preview-delete" class="preview-icon-btn is-danger" title="删除" aria-label="删除"></button>
           <a id="preview-download" class="preview-icon-btn" title="下载" aria-label="下载" download></a>
           <button type="button" id="preview-close" class="preview-icon-btn" title="关闭" aria-label="关闭"></button>
         </div>
       </div>
       <div class="preview-body" id="preview-body"></div>
     </div>
+  </div>
+
+  <div id="undo-toast" class="undo-toast" hidden>
+    <span id="undo-toast-msg" class="undo-toast__msg" role="status" aria-live="polite"></span>
+    <span id="undo-toast-count" class="undo-toast__count" aria-hidden="true">5s</span>
+    <button type="button" id="undo-toast-btn" class="undo-toast__btn">撤销</button>
   </div>
 
   <footer>
@@ -820,6 +940,8 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
   var PLAY_ICON =
     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  var TRASH_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 
   var FILE_CATEGORIES = [
     { id: "image", label: "图片", icon: IMAGE_ICON, exts: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "avif", "heic", "heif", "tif", "tiff"] },
@@ -1060,6 +1182,164 @@
     return inline ? url + "?inline=1" : url;
   }
 
+  var UNDO_MS = 5000;
+  var lastList = { files: [], lines: [], texts: [] };
+  var pendingDeletes = {};
+  var lastPendingKey = "";
+  var previewName = "";
+  var undoTickRaf = 0;
+
+  function pendingKey(kind, name) {
+    return kind + "\0" + name;
+  }
+
+  function visibleList() {
+    return {
+      files: lastList.files.filter(function (n) {
+        return !pendingDeletes[pendingKey("file", n)];
+      }),
+      lines: lastList.lines.filter(function (item) {
+        return !pendingDeletes[pendingKey("line", item.title)];
+      }),
+      texts: lastList.texts.filter(function (item) {
+        return !pendingDeletes[pendingKey("text", item.title)];
+      })
+    };
+  }
+
+  function renderAll() {
+    var data = visibleList();
+    safeRender("文件", "files-status", renderFiles, data.files);
+    safeRender("单行文本", "lines-status", renderLines, data.lines);
+    safeRender("长文本", "texts-status", renderTexts, data.texts);
+  }
+
+  function formatUndoRemain(ms) {
+    return Math.max(0, Math.ceil(ms / 1000)) + "s";
+  }
+
+  function stopUndoTick() {
+    if (undoTickRaf) {
+      cancelAnimationFrame(undoTickRaf);
+      undoTickRaf = 0;
+    }
+  }
+
+  function tickUndoToast() {
+    undoTickRaf = 0;
+    var count = document.getElementById("undo-toast-count");
+    var item = pendingDeletes[lastPendingKey];
+    if (!count || !item || item.committing) return;
+    var left = item.deadline - Date.now();
+    count.textContent = formatUndoRemain(left);
+    if (left > 0) undoTickRaf = requestAnimationFrame(tickUndoToast);
+  }
+
+  function showUndoToast(label) {
+    var toast = document.getElementById("undo-toast");
+    var msg = document.getElementById("undo-toast-msg");
+    var count = document.getElementById("undo-toast-count");
+    if (!toast || !msg) return;
+    msg.textContent = "已删除「" + label + "」";
+    if (count) count.textContent = formatUndoRemain(UNDO_MS);
+    toast.hidden = false;
+    stopUndoTick();
+    tickUndoToast();
+  }
+
+  function hideUndoToast() {
+    stopUndoTick();
+    var toast = document.getElementById("undo-toast");
+    if (toast) toast.hidden = true;
+  }
+
+  function bindUndoToast() {
+    var btn = document.getElementById("undo-toast-btn");
+    if (!btn) return;
+    btn.addEventListener("click", undoLastDelete);
+  }
+
+  function requestDelete(kind, name, label) {
+    var key = pendingKey(kind, name);
+    if (pendingDeletes[key]) return;
+    hideMediaHover();
+    if (kind === "file") closePreviewIfFile(name);
+    pendingDeletes[key] = {
+      kind: kind,
+      name: name,
+      label: label,
+      deadline: Date.now() + UNDO_MS,
+      timer: setTimeout(function () { commitDelete(key); }, UNDO_MS)
+    };
+    lastPendingKey = key;
+    renderAll();
+    showUndoToast(label);
+  }
+
+  function undoLastDelete() {
+    var key = lastPendingKey;
+    var item = pendingDeletes[key];
+    if (!item || item.committing) return;
+    clearTimeout(item.timer);
+    delete pendingDeletes[key];
+    lastPendingKey = "";
+    hideUndoToast();
+    renderAll();
+  }
+
+  function dropPendingFromLastList(item) {
+    if (item.kind === "file") {
+      lastList.files = lastList.files.filter(function (n) { return n !== item.name; });
+    } else if (item.kind === "line") {
+      lastList.lines = lastList.lines.filter(function (it) { return it.title !== item.name; });
+    } else if (item.kind === "text") {
+      lastList.texts = lastList.texts.filter(function (it) { return it.title !== item.name; });
+    }
+  }
+
+  function commitDelete(key) {
+    var item = pendingDeletes[key];
+    if (!item || item.committing) return;
+    item.committing = true;
+    if (lastPendingKey === key) {
+      lastPendingKey = "";
+      hideUndoToast();
+    }
+    fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ kind: item.kind, name: item.name })
+    })
+      .then(function (resp) {
+        return resp.text().then(function (body) {
+          if (!resp.ok) throw new Error(body || ("服务器返回 " + resp.status));
+        });
+      })
+      .then(function () {
+        dropPendingFromLastList(item);
+        delete pendingDeletes[key];
+        if (lastPendingKey === key) {
+          lastPendingKey = "";
+          hideUndoToast();
+        }
+      })
+      .catch(function (err) {
+        clearTimeout(item.timer);
+        delete pendingDeletes[key];
+        if (lastPendingKey === key) {
+          lastPendingKey = "";
+          hideUndoToast();
+        }
+        renderAll();
+        console.error("删除失败：", err);
+        setStatus(
+          item.kind === "file" ? "files-status" : (item.kind === "line" ? "lines-status" : "texts-status"),
+          "删除失败：" + (err && err.message ? err.message : "无法连接到服务器"),
+          true
+        );
+      });
+  }
+
   function groupFiles(files) {
     var buckets = {};
     files.forEach(function (name) {
@@ -1120,8 +1400,10 @@
     if (left < 8) {
       left = Math.max(8, (window.innerWidth - pw) / 2);
     }
+    var footer = document.querySelector("footer");
+    var footerH = footer ? footer.getBoundingClientRect().height : 0;
     var top = r.top + r.height / 2 - ph / 2;
-    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
+    top = Math.max(8, Math.min(top, window.innerHeight - footerH - ph - 8));
     pop.style.left = Math.round(left) + "px";
     pop.style.top = Math.round(top) + "px";
   }
@@ -1303,6 +1585,17 @@
 
     li.appendChild(hit);
     li.appendChild(nameEl);
+    var del = el("button", "media-del");
+    del.type = "button";
+    del.title = "删除";
+    del.setAttribute("aria-label", "删除 " + shown);
+    del.innerHTML = TRASH_ICON;
+    del.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      requestDelete("file", name, shown);
+    });
+    li.appendChild(del);
     li.appendChild(dl);
     grid.appendChild(li);
   }
@@ -1354,6 +1647,16 @@
     dl.setAttribute("aria-label", "下载 " + shown);
     dl.innerHTML = DOWNLOAD_ICON;
     row.appendChild(dl);
+
+    var del = el("button", "file-action is-danger");
+    del.type = "button";
+    del.title = "删除";
+    del.setAttribute("aria-label", "删除 " + shown);
+    del.innerHTML = TRASH_ICON;
+    del.addEventListener("click", function () {
+      requestDelete("file", name, shown);
+    });
+    row.appendChild(del);
 
     li.appendChild(row);
     list.appendChild(li);
@@ -1410,8 +1713,13 @@
     if (!overlay || overlay.hidden) return;
     clearPreviewMedia(document.getElementById("preview-body"));
     overlay.hidden = true;
-    document.body.style.overflow = "";
+    document.body.classList.remove("is-preview");
+    previewName = "";
     hideMediaHover();
+  }
+
+  function closePreviewIfFile(name) {
+    if (previewName === name) closePreview();
   }
 
   function showPreviewHint(body, message) {
@@ -1430,6 +1738,7 @@
 
     var shown = displayName(name);
     var previewHref = fileURL(name, true);
+    previewName = name;
     title.textContent = shown;
     title.title = shown;
     dl.href = fileURL(name, false);
@@ -1498,7 +1807,7 @@
     }
 
     overlay.hidden = false;
-    document.body.style.overflow = "hidden";
+    document.body.classList.add("is-preview");
     document.getElementById("preview-close").focus();
   }
 
@@ -1506,9 +1815,17 @@
     var overlay = document.getElementById("preview-overlay");
     var dialog = document.getElementById("preview-dialog");
     var closeBtn = document.getElementById("preview-close");
+    var delBtn = document.getElementById("preview-delete");
     if (!overlay || !dialog || !closeBtn) return;
     closeBtn.innerHTML = CLOSE_ICON;
     closeBtn.addEventListener("click", closePreview);
+    if (delBtn) {
+      delBtn.innerHTML = TRASH_ICON;
+      delBtn.addEventListener("click", function () {
+        if (!previewName) return;
+        requestDelete("file", previewName, displayName(previewName));
+      });
+    }
     overlay.addEventListener("click", function (ev) {
       if (ev.target === overlay) closePreview();
     });
@@ -1518,6 +1835,8 @@
         closePreview();
       }
     });
+    var page = document.querySelector(".page");
+    if (page) page.addEventListener("scroll", hideMediaHover, { passive: true });
     window.addEventListener("scroll", hideMediaHover, { passive: true });
     window.addEventListener("resize", hideMediaHover);
   }
@@ -1535,9 +1854,20 @@
     lines.forEach(function (item) {
       var wrap = el("div", "item");
 
+      var head = el("div", "item-head");
       var title = el("div", "item-title");
       title.textContent = item.title;
-      wrap.appendChild(title);
+      var del = el("button", "copy-btn item-del");
+      del.type = "button";
+      del.title = "删除";
+      del.setAttribute("aria-label", "删除 " + item.title);
+      del.innerHTML = TRASH_ICON;
+      del.addEventListener("click", function () {
+        requestDelete("line", item.title, item.title);
+      });
+      head.appendChild(title);
+      head.appendChild(del);
+      wrap.appendChild(head);
 
       var box = el("div", "copy-snippet");
 
@@ -1580,9 +1910,20 @@
     texts.forEach(function (item) {
       var wrap = el("div", "item");
 
+      var head = el("div", "item-head");
       var title = el("div", "item-title");
       title.textContent = item.title;
-      wrap.appendChild(title);
+      var del = el("button", "copy-btn item-del");
+      del.type = "button";
+      del.title = "删除";
+      del.setAttribute("aria-label", "删除 " + item.title);
+      del.innerHTML = TRASH_ICON;
+      del.addEventListener("click", function () {
+        requestDelete("text", item.title, item.title);
+      });
+      head.appendChild(title);
+      head.appendChild(del);
+      wrap.appendChild(head);
 
       var box = el("div", "copy-multiline");
 
@@ -1629,9 +1970,12 @@
         return resp.json();
       })
       .then(function (data) {
-        safeRender("文件", "files-status", renderFiles, Array.isArray(data.files) ? data.files : []);
-        safeRender("单行文本", "lines-status", renderLines, Array.isArray(data.lines) ? data.lines : []);
-        safeRender("长文本", "texts-status", renderTexts, Array.isArray(data.texts) ? data.texts : []);
+        lastList = {
+          files: Array.isArray(data.files) ? data.files : [],
+          lines: Array.isArray(data.lines) ? data.lines : [],
+          texts: Array.isArray(data.texts) ? data.texts : []
+        };
+        renderAll();
       })
       .catch(function (err) {
         var msg = "加载失败：" + (err && err.message ? err.message : "无法连接到服务器");
@@ -1842,6 +2186,7 @@
     loadVersion();
     bindPasteForm();
     bindPreview();
+    bindUndoToast();
     startAutoRefresh();
   }
 

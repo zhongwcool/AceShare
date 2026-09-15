@@ -11,8 +11,9 @@ import (
 )
 
 // DNS-SD / Bonjour 服务类型。客户端应浏览此类型：
-//   Android: NsdManager（serviceType = "_aceshare._tcp"）
-//   Apple:   NWBrowser / Bonjour（"_aceshare._tcp."）
+//
+//	Android: NsdManager（serviceType = "_aceshare._tcp"）
+//	Apple:   NWBrowser / Bonjour（"_aceshare._tcp."）
 const (
 	mdnsServiceType = "_aceshare._tcp"
 	mdnsDomain      = "local."
