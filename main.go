@@ -466,6 +466,12 @@ func main() {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
+	// 上传文件：multipart 字段 file，写入 files/。网页与原生客户端都可调用。
+	mux.HandleFunc("/api/upload", handleUpload(filesDir, maxUploadBytes))
+
+	// 预览取文件：不带 .pdf 路径，也不附下载头，避免下载工具把预览当成下载。
+	mux.HandleFunc("/api/file", handleRawFile(filesDir))
+
 	// 文件下载：使用 http.FileServer（自带路径清理，可防目录穿越）。
 	// 默认附加 attachment 下载头；?inline=1 时改为 inline，供页面内预览。
 	fileServer := http.StripPrefix("/files/", downloadHeaders(http.FileServer(noDirListing{http.Dir(filesDir)})))
@@ -936,7 +942,8 @@ func scanTexts(dir string) []TextItem {
 }
 
 // downloadHeaders 为文件请求附加 Content-Disposition。
-// 默认 attachment（强制下载）；查询参数 inline=1 时改为 inline，供页面内预览。
+// 默认 attachment（强制下载）；查询参数 inline=1 时改为 inline，供直接打开。
+// 页内预览不走这里，改走 /api/file，避免下载工具拦截带 .pdf 的地址。
 func downloadHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := path_Base(r.URL.Path)
@@ -960,6 +967,57 @@ func path_Base(p string) string {
 		return decoded
 	}
 	return p
+}
+
+// handleRawFile 按文件名返回 files/ 中的原始字节。
+// 地址固定为 /api/file，响应不带 Content-Disposition，类型也不是 application/pdf，
+// 这样页内预览用脚本读取后再交给浏览器，下载工具不会把这次请求当成 PDF 下载。
+func handleRawFile(filesDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "请求体无效", http.StatusBadRequest)
+			return
+		}
+		full, err := resolveInDir(filesDir, req.Name)
+		if err != nil {
+			http.Error(w, "无效文件名", http.StatusBadRequest)
+			return
+		}
+		f, err := os.Open(full)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "文件不存在", http.StatusNotFound)
+				return
+			}
+			log.Printf("打开文件失败 %s：%v", full, err)
+			http.Error(w, "读取失败", http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		info, err := f.Stat()
+		if err != nil {
+			log.Printf("读取文件信息失败 %s：%v", full, err)
+			http.Error(w, "读取失败", http.StatusInternalServerError)
+			return
+		}
+		if !info.Mode().IsRegular() {
+			http.Error(w, "只能读取普通文件", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.ServeContent(w, r, "", info.ModTime(), f)
+	}
 }
 
 // noDirListing 包装文件系统，禁止目录列表（访问目录时返回 404）。
@@ -1032,7 +1090,7 @@ func printBanner(rootDir string, ports []int, mdnsEnabled bool) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具")
 	fmt.Println(" ")
-	fmt.Println(" 把文件放进 files，短文本放进 lines，长文本放进 texts")
+	fmt.Println(" 文件可放进 files，或在网页里上传；短文本放进 lines，长文本放进 texts")
 	fmt.Println("========================================")
 	fmt.Printf(" 版本：  %s (%s)\n", version, buildTime)
 	fmt.Printf(" 根目录：%s\n", rootDir)

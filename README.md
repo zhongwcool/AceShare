@@ -1,6 +1,6 @@
 # 局域网文件与文本分享工具
 
-一个用 Go 编写的**单可执行文件**。双击运行后，它会自动扫描程序所在目录下的 `files/`、`lines/`、`texts/` 三个子目录，并启动一个 HTTP 服务，让局域网内的其他设备通过浏览器浏览、下载文件、查看并一键复制文本。
+一个用 Go 编写的**单可执行文件**。双击运行后，它会自动扫描程序所在目录下的 `files/`、`lines/`、`texts/` 三个子目录，并启动一个 HTTP 服务，让局域网内的其他设备通过浏览器浏览、上传、下载文件，查看并一键复制文本。
 
 - 单文件运行，前端页面通过 Go 的 `embed` 打包进可执行文件，无需任何外部文件。
 - **自动检测文件变化**：往目录里放入/删除文件后，已打开的网页会自动刷新，无需手动刷新（基于文件监听 + SSE 实时推送，并有轮询兜底）。
@@ -25,7 +25,7 @@
 
 ## 使用方法
 
-1. 把要分享的文件放进 `files/`，短文本放进 `lines/`，长文本放进 `texts/`。
+1. 把要分享的文件放进 `files/`（也可以在网页里直接上传），短文本放进 `lines/`，长文本放进 `texts/`。
 2. 双击运行可执行文件（或在终端里运行）。
 3. 控制台会打印访问地址，例如：
 
@@ -96,6 +96,13 @@
 }
 ```
 
+- `POST /api/upload` —— 上传文件到 `files/`。`multipart/form-data`，字段名 `file`，可重复（一次最多 100 个，整次请求最大 8GB）。文件名会去掉目录并替换非法字符；与已有文件重名时自动保存为 `名称_2.扩展名`，不覆盖。成功返回：
+
+```json
+{ "files": [{ "name": "a.jpg", "size": 1234 }] }
+```
+
+网页首页可点「选择文件」或把文件拖进文件卡片上传。接口不开放跨域，供本页和原生客户端调用。
 - `GET /files/<name>` —— 下载 `files/` 下对应文件（附带下载响应头，并防止目录穿越）。
 - `POST /api/delete` —— 删除条目。JSON：`{"kind":"file|line|text","name":"..."}`。`file` 的 `name` 为 `files/` 下文件名；`line` / `text` 的 `name` 为标题（不含 `.txt`）。
 - `GET /api/version` —— 返回版本信息 JSON。字段包括 `version` / `commit` / `buildTime` / `goVersion`；若检测到 [GitHub Releases](https://github.com/zhongwcool/AceShare/releases) 有更新，还会附带 `updateAvailable`、`latestVersion`、`releaseURL`。

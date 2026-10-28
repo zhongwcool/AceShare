@@ -54,6 +54,7 @@ AceShare 是局域网 HTTP 服务，已通过 mDNS 宣告。
 ```
 
 - `GET /files/{name}` → 文件下载（TV 端可先只展示文件名列表；下载可选：系统 DownloadManager 或提示「请在手机/电脑打开同地址下载」）
+- `POST /api/upload` → 上传到 `files/`。`multipart/form-data`，字段名 `file`（可重复，一次最多 100 个，整次请求最大 8GB）。成功 JSON：`{"files":[{"name":"a.jpg","size":1234}]}`。重名不会覆盖，会保存为 `名称_2.扩展名`。无跨域头，原生客户端可直接调用。
 - `GET /api/version` → 版本信息（可选展示）
 - `GET /api/events` → SSE：`event: change` 时重新拉 `/api/list`（可用 OkHttp SSE 或轮询兜底，轮询间隔建议 5–10s）
 
@@ -191,7 +192,7 @@ app/
 ## 非目标（本版不做）
 
 - 账号登录、公网穿透、HTTPS 证书配置
-- 把 TV 当上传端（`/api/paste` 可后续再做）
+- 把 TV 当上传端（服务端已支持 `POST /api/upload` 与 `POST /api/paste`，本版 TV 界面可不做）
 - iOS / Apple TV（另案；协议可复用）
 - 复杂媒体播放器
 

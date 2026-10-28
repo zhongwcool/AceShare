@@ -399,6 +399,15 @@
     overflow: hidden;
   }
   .preview-dialog:not(.is-media) { width: min(640px, 92vw); }
+  .preview-dialog.is-doc {
+    width: min(1100px, 96vw);
+    height: min(92vh, 1000px);
+  }
+  .preview-dialog.is-doc .preview-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
   .preview-dialog.is-media { background: #111318; border-color: #2a2f36; }
   .preview-dialog.is-media .preview-title { color: #e6edf3; }
   .preview-dialog.is-media .preview-icon-btn { color: #9aa3ad; }
@@ -469,10 +478,15 @@
   .preview-body audio { padding: 28px 20px; }
   .preview-body iframe {
     display: block;
-    width: min(920px, 92vw);
-    height: min(80vh, 860px);
+    width: 100%;
+    height: min(78vh, 820px);
     border: 0;
-    background: var(--panel-2);
+    background: #525659;
+    color-scheme: light;
+  }
+  .preview-dialog.is-doc .preview-body iframe {
+    height: 100%;
+    min-height: min(70vh, 720px);
   }
   .preview-body pre {
     margin: 0;
@@ -694,14 +708,78 @@
     border-color: var(--accent);
     color: var(--accent);
   }
-  .paste-msg {
+  .paste-msg,
+  .upload-msg {
     font-size: 12px;
     min-height: 1.2em;
     color: var(--text-dim);
   }
-  .paste-msg.ok { color: var(--ok); }
-  .paste-msg.err { color: var(--err); }
+  .paste-msg.ok, .upload-msg.ok { color: var(--ok); }
+  .paste-msg.err, .upload-msg.err { color: var(--err); }
   .paste-msg a { color: var(--accent); }
+
+  .upload-form {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .upload-drop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    background: var(--code-bg);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .upload-drop.is-over {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--code-bg));
+  }
+  .upload-drop.is-busy { opacity: 0.72; }
+  .upload-pick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+  }
+  .upload-pick:hover { filter: brightness(1.08); }
+  .upload-drop.is-busy .upload-pick { pointer-events: none; }
+  .upload-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .upload-hint { font-size: 13px; color: var(--text-dim); }
+  .upload-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .upload-progress__bar {
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    transition: width 0.12s linear;
+  }
 
   footer {
     position: absolute;
@@ -817,9 +895,11 @@
     .media-dl, .media-del { opacity: 0.92; }
     .preview-overlay { padding: 0; }
     .preview-dialog,
-    .preview-dialog:not(.is-media) {
+    .preview-dialog:not(.is-media),
+    .preview-dialog.is-doc {
       width: 100%;
       max-width: 100%;
+      height: 100%;
       max-height: 100vh;
       border-radius: 0;
       border: none;
@@ -828,7 +908,8 @@
     .preview-body video,
     .preview-body iframe,
     .preview-body pre { max-width: 100vw; }
-    .preview-body iframe { height: calc(100vh - 54px); }
+    .preview-body iframe,
+    .preview-dialog.is-doc .preview-body iframe { height: calc(100vh - 54px); }
     .copy-snippet__text, .copy-multiline__text { font-size: 0.9rem; }
 
     footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
@@ -845,9 +926,20 @@
   <div class="layout">
     <!-- 左栏：文件列表 -->
     <div class="col col-files">
-      <section class="card">
-        <h2>文件下载 <span class="count" id="files-count"></span></h2>
+      <section class="card" id="files-card">
+        <h2>文件 <span class="count" id="files-count"></span></h2>
         <div class="card-body">
+          <form class="upload-form" id="upload-form" action="/api/upload" method="post" enctype="multipart/form-data">
+            <div class="upload-drop" id="upload-drop">
+              <label class="upload-pick" id="upload-pick" for="upload-input">选择文件</label>
+              <input class="upload-input" type="file" id="upload-input" name="file" multiple />
+              <span class="upload-hint">或拖到这里，可一次选多个</span>
+            </div>
+            <div class="upload-progress" id="upload-progress" hidden>
+              <div class="upload-progress__bar" id="upload-progress-bar"></div>
+            </div>
+            <div class="upload-msg" id="upload-msg" aria-live="polite"></div>
+          </form>
           <div id="files-status" class="status">正在加载…</div>
           <div class="file-groups" id="files-list"></div>
         </div>
@@ -1202,6 +1294,7 @@
   var pendingDeletes = {};
   var lastPendingKey = "";
   var previewName = "";
+  var previewObjectURL = "";
   var undoTickRaf = 0;
 
   function pendingKey(kind, name) {
@@ -1683,7 +1776,7 @@
     root.innerHTML = "";
     setCount("files-count", files.length);
     if (!files.length) {
-      setStatus("files-status", "files/ 目录为空，暂无可下载文件。", false);
+      setStatus("files-status", "暂无文件。可以在这里上传，或把文件放进 files/ 目录。", false);
       return;
     }
     setStatus("files-status", "", false);
@@ -1713,6 +1806,12 @@
     });
   }
 
+  function revokePreviewObjectURL() {
+    if (!previewObjectURL) return;
+    URL.revokeObjectURL(previewObjectURL);
+    previewObjectURL = "";
+  }
+
   function clearPreviewMedia(body) {
     var media = body.querySelectorAll("video, audio");
     for (var i = 0; i < media.length; i++) {
@@ -1720,6 +1819,7 @@
       media[i].removeAttribute("src");
       media[i].load();
     }
+    revokePreviewObjectURL();
     body.innerHTML = "";
   }
 
@@ -1758,7 +1858,10 @@
     title.title = shown;
     dl.href = fileURL(name, false);
     dl.innerHTML = DOWNLOAD_ICON;
-    dialog.className = "preview-dialog" + (kind === "image" || kind === "video" || kind === "audio" ? " is-media" : "");
+    var dialogKind = "";
+    if (kind === "image" || kind === "video" || kind === "audio") dialogKind = " is-media";
+    else if (kind === "doc") dialogKind = " is-doc";
+    dialog.className = "preview-dialog" + dialogKind;
     clearPreviewMedia(body);
 
     if (kind === "image") {
@@ -1788,10 +1891,36 @@
       audio.src = previewHref;
       body.appendChild(audio);
     } else if (kind === "doc") {
-      var frame = document.createElement("iframe");
-      frame.title = shown;
-      frame.src = previewHref;
-      body.appendChild(frame);
+      // 不用带 .pdf 的地址打开预览。下载工具会拦截这种地址并弹出下载框。
+      // 先用脚本取回字节，再交给浏览器内部的 blob 地址显示。
+      showPreviewHint(body, "加载中…");
+      var pdfName = name;
+      fetch("/api/file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ name: name })
+      })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error("bad");
+          return resp.blob();
+        })
+        .then(function (blob) {
+          if (previewName !== pdfName) return;
+          var pdfBlob = new Blob([blob], { type: "application/pdf" });
+          var url = URL.createObjectURL(pdfBlob);
+          previewObjectURL = url;
+          body.innerHTML = "";
+          var frame = document.createElement("iframe");
+          frame.title = shown;
+          frame.src = url;
+          body.appendChild(frame);
+        })
+        .catch(function () {
+          if (previewName !== pdfName) return;
+          body.innerHTML = "";
+          showPreviewHint(body, "无法预览。若仍弹出下载工具，请先关闭它再试，或直接下载查看");
+        });
     } else if (kind === "text") {
       showPreviewHint(body, "加载中…");
       fetch(previewHref, { cache: "no-store" })
@@ -2028,6 +2157,176 @@
       .catch(function () {});
   }
 
+  // 上传文件：POST /api/upload，字段 file。成功后 SSE 会刷新列表，这里再拉一次。
+  function setUploadMsg(message, kind) {
+    var node = document.getElementById("upload-msg");
+    if (!node) return;
+    node.textContent = message || "";
+    node.className = "upload-msg" + (kind ? " " + kind : "");
+  }
+
+  function dragHasFiles(ev) {
+    var types = ev.dataTransfer && ev.dataTransfer.types;
+    if (!types) return false;
+    for (var i = 0; i < types.length; i++) {
+      if (types[i] === "Files") return true;
+    }
+    return false;
+  }
+
+  function collectFiles(data) {
+    var out = [];
+    if (!data) return out;
+    var items = data.items;
+    if (items && items.length) {
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.kind && item.kind !== "file") continue;
+        var entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+        if (entry && entry.isDirectory) continue;
+        var file = item.getAsFile && item.getAsFile();
+        if (file) out.push(file);
+      }
+      if (out.length) return out;
+    }
+    if (data.files) {
+      for (var j = 0; j < data.files.length; j++) out.push(data.files[j]);
+    }
+    return out;
+  }
+
+  function bindUpload() {
+    var form = document.getElementById("upload-form");
+    var input = document.getElementById("upload-input");
+    var drop = document.getElementById("upload-drop");
+    var card = document.getElementById("files-card");
+    var progress = document.getElementById("upload-progress");
+    var bar = document.getElementById("upload-progress-bar");
+    if (!form || !input || !drop || !card) return;
+
+    var busy = false;
+    var dragDepth = 0;
+
+    function setBusy(on) {
+      busy = on;
+      input.disabled = on;
+      drop.classList.toggle("is-busy", on);
+      if (!on && progress && bar) {
+        progress.hidden = true;
+        bar.style.width = "0%";
+      }
+    }
+
+    function uploadFiles(list) {
+      var files = [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i]) files.push(list[i]);
+      }
+      if (!files.length) return;
+      if (busy) {
+        setUploadMsg("正在上传，请稍候", "");
+        return;
+      }
+      var fd = new FormData();
+      for (var n = 0; n < files.length; n++) {
+        fd.append("file", files[n], files[n].name);
+      }
+      setBusy(true);
+      if (progress && bar) {
+        progress.hidden = false;
+        bar.style.width = "0%";
+      }
+      setUploadMsg(files.length > 1 ? "正在上传 " + files.length + " 个文件…" : "正在上传…", "");
+
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.upload.onprogress = function (ev) {
+        if (!ev.lengthComputable || !bar || !progress) return;
+        var pct = Math.max(0, Math.min(100, Math.round(ev.loaded / ev.total * 100)));
+        progress.hidden = false;
+        bar.style.width = pct + "%";
+        setUploadMsg((files.length > 1 ? "正在上传 " + files.length + " 个文件… " : "正在上传… ") + pct + "%", "");
+      };
+      xhr.onload = function () {
+        var text = String(xhr.responseText || "").trim();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          var data = {};
+          try { data = JSON.parse(text); } catch (e) { data = {}; }
+          var names = [];
+          var saved = data.files || [];
+          for (var i = 0; i < saved.length; i++) {
+            if (saved[i] && saved[i].name) names.push(saved[i].name);
+          }
+          var msg = names.length ? "已上传：" + names.join("、") : "上传完成";
+          setUploadMsg(msg, "ok");
+          scheduleReload();
+        } else {
+          if (text.length > 200) text = text.slice(0, 200);
+          setUploadMsg("上传失败：" + (text || ("服务器返回 " + xhr.status)), "err");
+        }
+        setBusy(false);
+      };
+      xhr.onerror = function () {
+        setUploadMsg("上传失败：无法连接到服务器", "err");
+        setBusy(false);
+      };
+      xhr.send(fd);
+    }
+
+    form.addEventListener("submit", function (ev) { ev.preventDefault(); });
+    input.addEventListener("change", function () {
+      if (input.files && input.files.length) uploadFiles(input.files);
+      input.value = "";
+    });
+
+    card.addEventListener("dragenter", function (ev) {
+      if (!dragHasFiles(ev)) return;
+      ev.preventDefault();
+      dragDepth++;
+      drop.classList.add("is-over");
+    });
+    card.addEventListener("dragover", function (ev) {
+      if (!dragHasFiles(ev)) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+    });
+    card.addEventListener("dragleave", function (ev) {
+      if (!dragHasFiles(ev)) return;
+      dragDepth--;
+      if (dragDepth <= 0) {
+        dragDepth = 0;
+        drop.classList.remove("is-over");
+      }
+    });
+    card.addEventListener("drop", function (ev) {
+      if (!dragHasFiles(ev)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      dragDepth = 0;
+      drop.classList.remove("is-over");
+      var files = collectFiles(ev.dataTransfer);
+      if (files.length) uploadFiles(files);
+    });
+    document.addEventListener("dragover", function (ev) {
+      if (dragHasFiles(ev)) ev.preventDefault();
+    });
+    document.addEventListener("drop", function (ev) {
+      if (dragHasFiles(ev)) ev.preventDefault();
+    });
+    document.addEventListener("dragend", function () {
+      dragDepth = 0;
+      drop.classList.remove("is-over");
+    });
+    document.addEventListener("paste", function (ev) {
+      var target = ev.target;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) return;
+      var files = collectFiles(ev.clipboardData);
+      if (!files.length) return;
+      ev.preventDefault();
+      uploadFiles(files);
+    });
+  }
+
   // 粘贴录入：提交到 /api/paste，成功后 SSE 会自动刷新列表。
   function setPasteMsg(message, kind, linkHref, linkLabel) {
     var node = document.getElementById("paste-msg");
@@ -2199,6 +2498,7 @@
   function init() {
     load();
     loadVersion();
+    bindUpload();
     bindPasteForm();
     bindPreview();
     bindUndoToast();
