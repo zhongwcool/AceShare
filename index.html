@@ -575,6 +575,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .copy-snippet__actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 2px;
+    margin: -0.15rem -0.25rem -0.15rem 0;
+  }
+  .copy-snippet__actions .copy-btn { margin: 0; }
 
   /* 长文本（texts）：圆角框 + 右上角透明复制按钮 */
   .copy-multiline {
@@ -625,7 +633,16 @@
   .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .copy-btn.copied { color: var(--ok); }
   .copy-btn svg { width: 18px; height: 18px; }
+  a.copy-btn { text-decoration: none; }
   .copy-multiline__btn { position: absolute; top: 0.22rem; right: 0.22rem; align-self: auto; margin: 0; }
+  .copy-multiline.has-link .copy-multiline__text { padding-right: 5rem; }
+  .copy-multiline__open {
+    position: absolute;
+    top: 0.22rem;
+    right: 2.6rem;
+    align-self: auto;
+    margin: 0;
+  }
 
   .copy-feedback {
     margin: 0.12rem 0 0 0.2rem;
@@ -718,44 +735,92 @@
   .paste-msg.err, .upload-msg.err { color: var(--err); }
   .paste-msg a { color: var(--accent); }
 
-  .upload-form {
-    position: relative;
+  .upload-fab {
+    position: fixed;
+    z-index: 70;
+    /* 宽屏时对齐内容区右缘，避免贴在浏览器边上；窄屏仍贴边留出间距。 */
+    right: max(22px, calc((100% - 1200px) / 2 + 40px));
+    bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .upload-drop {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-end;
     gap: 10px;
-    padding: 12px;
-    border: 1px dashed var(--border);
+    margin: 0;
+  }
+  .upload-fab__status {
+    max-width: min(280px, calc(100vw - 96px));
+    padding: 8px 12px;
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: var(--code-bg);
-    transition: border-color 0.15s, background 0.15s;
+    background: var(--panel);
+    box-shadow: var(--shadow);
   }
-  .upload-drop.is-over {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--code-bg));
-  }
-  .upload-drop.is-busy { opacity: 0.72; }
-  .upload-pick {
+  .upload-fab__status[hidden] { display: none; }
+  .upload-fab__btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 8px 14px;
-    border-radius: 10px;
+    gap: 8px;
+    height: 44px;
+    padding: 0 16px 0 14px;
+    border-radius: 999px;
     background: var(--accent);
     color: var(--accent-text);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.08),
+      0 4px 10px rgba(15, 23, 42, 0.08),
+      0 12px 24px rgba(15, 23, 42, 0.12);
     cursor: pointer;
     user-select: none;
+    transition: box-shadow 0.2s ease;
   }
-  .upload-pick:hover { filter: brightness(1.08); }
-  .upload-drop.is-busy .upload-pick { pointer-events: none; }
+  .upload-fab__btn:hover,
+  .upload-fab.is-over .upload-fab__btn {
+    box-shadow:
+      0 2px 4px rgba(15, 23, 42, 0.1),
+      0 8px 16px rgba(15, 23, 42, 0.1),
+      0 16px 32px rgba(15, 23, 42, 0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    .upload-fab__btn {
+      box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        0 6px 16px rgba(0, 0, 0, 0.35),
+        0 14px 28px rgba(0, 0, 0, 0.4);
+    }
+    .upload-fab__btn:hover,
+    .upload-fab.is-over .upload-fab__btn {
+      box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.45),
+        0 10px 22px rgba(0, 0, 0, 0.4),
+        0 18px 36px rgba(0, 0, 0, 0.45);
+    }
+  }
+  .upload-fab__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .upload-fab__btn svg { width: 18px; height: 18px; flex: none; overflow: visible; }
+  .upload-fab__arrow {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+  }
+  .upload-fab__btn:hover .upload-fab__arrow,
+  .upload-fab.is-over .upload-fab__arrow {
+    animation: upload-nudge 0.5s ease;
+  }
+  @keyframes upload-nudge {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .upload-fab__btn:hover .upload-fab__arrow,
+    .upload-fab.is-over .upload-fab__arrow { animation: none; }
+  }
+  .upload-fab.is-busy .upload-fab__btn {
+    opacity: 0.72;
+    pointer-events: none;
+  }
   .upload-input {
     position: absolute;
     width: 1px;
@@ -767,13 +832,14 @@
     white-space: nowrap;
     border: 0;
   }
-  .upload-hint { font-size: 13px; color: var(--text-dim); }
   .upload-progress {
-    height: 6px;
+    height: 4px;
+    margin-bottom: 6px;
     border-radius: 999px;
     background: var(--panel-2);
     overflow: hidden;
   }
+  .upload-progress[hidden] { display: none; }
   .upload-progress__bar {
     height: 100%;
     width: 0;
@@ -912,6 +978,12 @@
     .preview-dialog.is-doc .preview-body iframe { height: calc(100vh - 54px); }
     .copy-snippet__text, .copy-multiline__text { font-size: 0.9rem; }
 
+    .upload-fab {
+      right: 16px;
+      bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
+    }
+    .upload-fab__btn { height: 42px; padding: 0 14px 0 12px; font-size: 14px; }
+
     footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
   }
 </style>
@@ -929,17 +1001,6 @@
       <section class="card" id="files-card">
         <h2>文件 <span class="count" id="files-count"></span></h2>
         <div class="card-body">
-          <form class="upload-form" id="upload-form" action="/api/upload" method="post" enctype="multipart/form-data">
-            <div class="upload-drop" id="upload-drop">
-              <label class="upload-pick" id="upload-pick" for="upload-input">选择文件</label>
-              <input class="upload-input" type="file" id="upload-input" name="file" multiple />
-              <span class="upload-hint">或拖到这里，可一次选多个</span>
-            </div>
-            <div class="upload-progress" id="upload-progress" hidden>
-              <div class="upload-progress__bar" id="upload-progress-bar"></div>
-            </div>
-            <div class="upload-msg" id="upload-msg" aria-live="polite"></div>
-          </form>
           <div id="files-status" class="status">正在加载…</div>
           <div class="file-groups" id="files-list"></div>
         </div>
@@ -1017,12 +1078,28 @@
     <div>局域网文件与文本分享工具 · 联系开发者：<a href="mailto:zhongwcool@163.com">zhongwcool@163.com</a></div>
   </footer>
 
+  <form class="upload-fab" id="upload-form" action="/api/upload" method="post" enctype="multipart/form-data">
+    <div class="upload-fab__status" id="upload-status" hidden>
+      <div class="upload-progress" id="upload-progress" hidden>
+        <div class="upload-progress__bar" id="upload-progress-bar"></div>
+      </div>
+      <div class="upload-msg" id="upload-msg" aria-live="polite"></div>
+    </div>
+    <label class="upload-fab__btn" id="upload-drop" for="upload-input" title="上传文件，也可把文件拖到这里" aria-label="上传文件">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="upload-fab__arrow"><path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/></g><path d="M5 19h14"/></svg>
+      <span>上传</span>
+    </label>
+    <input class="upload-input" type="file" id="upload-input" name="file" multiple />
+  </form>
+
 <script>
 (function () {
   "use strict";
 
   var COPY_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var OPEN_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
   var CHECK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
   var FILE_ICON =
@@ -1776,7 +1853,7 @@
     root.innerHTML = "";
     setCount("files-count", files.length);
     if (!files.length) {
-      setStatus("files-status", "暂无文件。可以在这里上传，或把文件放进 files/ 目录。", false);
+      setStatus("files-status", "暂无文件。可以点右下角的上传按钮，或把文件放进 files/ 目录。", false);
       return;
     }
     setStatus("files-status", "", false);
@@ -1985,6 +2062,74 @@
     window.addEventListener("resize", hideMediaHover);
   }
 
+  // 从文本中提取 http(s) 链接。去掉首尾标点和紧挨着的中文，避免把说明文字算进地址。
+  function extractHttpLinks(text) {
+    if (!text) return [];
+    var seen = Object.create(null);
+    var out = [];
+    var re = /https?:\/\/[^\s<>"'`]+/gi;
+    var match;
+    while ((match = re.exec(text)) !== null) {
+      var url = trimUrlTail(match[0]);
+      if (!url || seen[url]) continue;
+      try {
+        var parsed = new URL(url);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+      } catch (e) {
+        continue;
+      }
+      seen[url] = true;
+      out.push(url);
+    }
+    return out;
+  }
+
+  function trimUrlTail(raw) {
+    var url = String(raw).replace(/[^\x21-\x7E].*$/, "");
+    var closers = {
+      ")": "(",
+      "]": "[",
+      "}": "{",
+      ">": "<"
+    };
+    var trail = ".,;:!?\"'`";
+    while (url.length) {
+      var last = url.charAt(url.length - 1);
+      if (trail.indexOf(last) >= 0) {
+        url = url.slice(0, -1);
+        continue;
+      }
+      var open = closers[last];
+      if (open) {
+        var opens = 0;
+        var closes = 0;
+        var i;
+        for (i = 0; i < url.length; i++) {
+          var ch = url.charAt(i);
+          if (ch === open) opens++;
+          else if (ch === last) closes++;
+        }
+        if (closes > opens) {
+          url = url.slice(0, -1);
+          continue;
+        }
+      }
+      break;
+    }
+    return url;
+  }
+
+  function makeOpenLink(url, extraClass) {
+    var link = el("a", "copy-btn" + (extraClass ? " " + extraClass : ""));
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.title = "打开";
+    link.setAttribute("aria-label", "打开链接");
+    link.innerHTML = OPEN_ICON;
+    return link;
+  }
+
   // 渲染单行文本
   function renderLines(lines) {
     var list = document.getElementById("lines-list");
@@ -2021,13 +2166,18 @@
       code.textContent = oneLine;
       code.title = oneLine;
 
+      var actions = el("div", "copy-snippet__actions");
+      var links = extractHttpLinks(item.text);
+      if (links.length) actions.appendChild(makeOpenLink(links[0]));
+
       var btn = el("button", "copy-btn");
       btn.type = "button";
       btn.title = "复制";
       btn.innerHTML = COPY_ICON;
+      actions.appendChild(btn);
 
       box.appendChild(code);
-      box.appendChild(btn);
+      box.appendChild(actions);
       wrap.appendChild(box);
 
       var feedback = el("div", "copy-feedback");
@@ -2070,6 +2220,12 @@
       wrap.appendChild(head);
 
       var box = el("div", "copy-multiline");
+
+      var links = extractHttpLinks(item.text);
+      if (links.length) {
+        box.classList.add("has-link");
+        box.appendChild(makeOpenLink(links[0], "copy-multiline__open"));
+      }
 
       var btn = el("button", "copy-btn copy-multiline__btn");
       btn.type = "button";
@@ -2160,9 +2316,11 @@
   // 上传文件：POST /api/upload，字段 file。成功后 SSE 会刷新列表，这里再拉一次。
   function setUploadMsg(message, kind) {
     var node = document.getElementById("upload-msg");
+    var status = document.getElementById("upload-status");
     if (!node) return;
     node.textContent = message || "";
     node.className = "upload-msg" + (kind ? " " + kind : "");
+    if (status) status.hidden = !message;
   }
 
   function dragHasFiles(ev) {
@@ -2199,7 +2357,7 @@
     var form = document.getElementById("upload-form");
     var input = document.getElementById("upload-input");
     var drop = document.getElementById("upload-drop");
-    var card = document.getElementById("files-card");
+    var card = form;
     var progress = document.getElementById("upload-progress");
     var bar = document.getElementById("upload-progress-bar");
     if (!form || !input || !drop || !card) return;
@@ -2210,7 +2368,7 @@
     function setBusy(on) {
       busy = on;
       input.disabled = on;
-      drop.classList.toggle("is-busy", on);
+      form.classList.toggle("is-busy", on);
       if (!on && progress && bar) {
         progress.hidden = true;
         bar.style.width = "0%";
@@ -2283,7 +2441,7 @@
       if (!dragHasFiles(ev)) return;
       ev.preventDefault();
       dragDepth++;
-      drop.classList.add("is-over");
+      form.classList.add("is-over");
     });
     card.addEventListener("dragover", function (ev) {
       if (!dragHasFiles(ev)) return;
@@ -2295,7 +2453,7 @@
       dragDepth--;
       if (dragDepth <= 0) {
         dragDepth = 0;
-        drop.classList.remove("is-over");
+        form.classList.remove("is-over");
       }
     });
     card.addEventListener("drop", function (ev) {
@@ -2303,7 +2461,7 @@
       ev.preventDefault();
       ev.stopPropagation();
       dragDepth = 0;
-      drop.classList.remove("is-over");
+      form.classList.remove("is-over");
       var files = collectFiles(ev.dataTransfer);
       if (files.length) uploadFiles(files);
     });
@@ -2315,7 +2473,7 @@
     });
     document.addEventListener("dragend", function () {
       dragDepth = 0;
-      drop.classList.remove("is-over");
+      form.classList.remove("is-over");
     });
     document.addEventListener("paste", function (ev) {
       var target = ev.target;
