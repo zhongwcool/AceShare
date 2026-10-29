@@ -738,12 +738,12 @@
   .upload-fab {
     position: fixed;
     z-index: 70;
-    /* 宽屏时对齐内容区右缘，避免贴在浏览器边上；窄屏仍贴边留出间距。 */
-    right: max(22px, calc((100% - 1200px) / 2 + 40px));
+    /* 宽屏时对齐内容区左缘，避免贴在浏览器边上；窄屏仍贴边留出间距。 */
+    left: max(22px, calc((100% - 1200px) / 2 + 40px));
     bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 10px;
     margin: 0;
   }
@@ -979,7 +979,7 @@
     .copy-snippet__text, .copy-multiline__text { font-size: 0.9rem; }
 
     .upload-fab {
-      right: 16px;
+      left: 16px;
       bottom: calc(4.2rem + env(safe-area-inset-bottom, 0px));
     }
     .upload-fab__btn { height: 42px; padding: 0 14px 0 12px; font-size: 14px; }
@@ -1853,7 +1853,7 @@
     root.innerHTML = "";
     setCount("files-count", files.length);
     if (!files.length) {
-      setStatus("files-status", "暂无文件。可以点右下角的上传按钮，或把文件放进 files/ 目录。", false);
+      setStatus("files-status", "暂无文件。可以点左下角的上传按钮，或把文件放进 files/ 目录。", false);
       return;
     }
     setStatus("files-status", "", false);
