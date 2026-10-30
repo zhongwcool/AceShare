@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -36,7 +37,12 @@ func registerMDNS(port int, allPorts []int) (*zeroconf.Server, error) {
 		txt = append(txt, "ports="+strings.Join(parts, ","))
 	}
 
-	server, err := zeroconf.Register(name, mdnsServiceType, mdnsDomain, port, txt, nil)
+	ifaces := selectLANInterfaces()
+	var regIfaces []net.Interface
+	if len(ifaces) > 0 {
+		regIfaces = ifaces
+	}
+	server, err := zeroconf.Register(name, mdnsServiceType, mdnsDomain, port, txt, regIfaces)
 	if err != nil {
 		return nil, err
 	}
@@ -54,4 +60,80 @@ func mdnsInstanceName() string {
 	host = strings.TrimSuffix(host, ".local")
 	host = strings.TrimSuffix(host, ".LOCAL")
 	return fmt.Sprintf("AceShare (%s)", host)
+}
+
+// selectLANInterfaces 返回适合向局域网宣告的网卡。
+// Hyper-V / WSL 虚拟交换机和代理 TUN 上的地址，手机所在的局域网路由不到。
+func selectLANInterfaces() []net.Interface {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	selected := make([]net.Interface, 0, len(ifaces))
+	for _, ifi := range ifaces {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagMulticast == 0 || ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if isVirtualAdapterName(ifi.Name) {
+			continue
+		}
+		if !hasShareableIPv4(ifi) {
+			continue
+		}
+		selected = append(selected, ifi)
+	}
+	return selected
+}
+
+func isVirtualAdapterName(name string) bool {
+	n := strings.ToLower(name)
+	for _, part := range []string{
+		"vethernet",
+		"hyper-v",
+		"wsl",
+		"docker",
+		"vmware",
+		"virtualbox",
+		"vbox",
+		"bluetooth",
+		"蓝牙",
+		"wintun",
+		"flclash",
+		"clash",
+		"tailscale",
+		"zerotier",
+		"tunnel",
+		"vpn",
+	} {
+		if strings.Contains(n, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasShareableIPv4(ifi net.Interface) bool {
+	addrs, err := ifi.Addrs()
+	if err != nil {
+		return false
+	}
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		if ok && shareableIPv4(ipnet.IP) {
+			return true
+		}
+	}
+	return false
+}
+
+func shareableIPv4(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() || ip4.IsUnspecified() {
+		return false
+	}
+	// 198.18.0.0/15 是基准测试网段，代理 TUN 和 fake-ip 用它，不能当局域网地址。
+	if ip4[0] == 198 && (ip4[1] == 18 || ip4[1] == 19) {
+		return false
+	}
+	return true
 }
