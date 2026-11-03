@@ -184,11 +184,17 @@
     color: var(--text);
     text-decoration: none;
     font-size: 14px;
-    word-break: break-all;
     cursor: pointer;
   }
   ul.file-list .file-main:hover { color: var(--accent); background: rgba(127, 127, 127, 0.08); }
-  ul.file-list .file-main .fname { min-width: 0; }
+  ul.file-list .file-ico { flex: none; display: inline-flex; }
+  ul.file-list .file-main .fname {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   ul.file-list .file-thumb {
     flex: none;
     width: 40px;
@@ -1798,11 +1804,12 @@
     var main = el("a", "file-main");
     main.href = kind ? previewHref : downloadHref;
     if (!kind) main.setAttribute("download", "");
-    var ico = el("span");
+    var ico = el("span", "file-ico");
     ico.innerHTML = cat.icon;
     main.appendChild(ico);
     var fname = el("span", "fname");
     fname.textContent = shown;
+    fname.title = shown;
     main.appendChild(fname);
     if (kind) {
       main.addEventListener("click", function (ev) {
