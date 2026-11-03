@@ -183,11 +183,20 @@ type TextItem struct {
 	Text  string `json:"text"`
 }
 
+// FileMeta 是 files/ 里一个文件的大小和修改时间。
+// Mtime 为 Unix 毫秒。旧客户端只读 Files，可以忽略本字段。
+type FileMeta struct {
+	Name  string `json:"name"`
+	Size  int64  `json:"size"`
+	Mtime int64  `json:"mtime"`
+}
+
 // ListResponse 是 /api/list 返回的 JSON 结构。
 type ListResponse struct {
-	Files []string   `json:"files"`
-	Lines []TextItem `json:"lines"`
-	Texts []TextItem `json:"texts"`
+	Files    []string   `json:"files"`
+	FileMeta []FileMeta `json:"fileMeta,omitempty"`
+	Lines    []TextItem `json:"lines"`
+	Texts    []TextItem `json:"texts"`
 }
 
 // PasteRequest 是 /api/paste 的请求体。
@@ -324,10 +333,12 @@ func main() {
 
 	// 列表接口。
 	mux.HandleFunc("/api/list", func(w http.ResponseWriter, r *http.Request) {
+		names, meta := scanFileEntries(filesDir)
 		resp := ListResponse{
-			Files: scanFiles(filesDir),
-			Lines: scanTexts(linesDir),
-			Texts: scanTexts(textsDir),
+			Files:    names,
+			FileMeta: meta,
+			Lines:    scanTexts(linesDir),
+			Texts:    scanTexts(textsDir),
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		enc := json.NewEncoder(w)
@@ -878,25 +889,45 @@ func executableDir() string {
 
 // scanFiles 返回目录下所有普通文件的文件名（自然排序）。目录不存在时返回空切片。
 func scanFiles(dir string) []string {
-	result := []string{}
+	names, _ := scanFileEntries(dir)
+	return names
+}
+
+// scanFileEntries 返回文件名，以及对应的大小和修改时间。顺序与 scanFiles 相同。
+func scanFileEntries(dir string) ([]string, []FileMeta) {
+	names := []string{}
+	meta := []FileMeta{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return result
+		return names, meta
 	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		// 跳过隐藏文件（以 . 开头）。
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		result = append(result, e.Name())
+		size := int64(-1)
+		var mtime int64
+		if info, err := e.Info(); err == nil {
+			size = info.Size()
+			mtime = info.ModTime().UnixMilli()
+		}
+		names = append(names, e.Name())
+		meta = append(meta, FileMeta{Name: e.Name(), Size: size, Mtime: mtime})
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return naturalLess(result[i], result[j])
+	sort.Slice(names, func(i, j int) bool {
+		return naturalLess(names[i], names[j])
 	})
-	return result
+	order := make(map[string]int, len(names))
+	for i, name := range names {
+		order[name] = i
+	}
+	sort.Slice(meta, func(i, j int) bool {
+		return order[meta[i].Name] < order[meta[j].Name]
+	})
+	return names, meta
 }
 
 // scanTexts 读取目录下所有 .txt 文件，返回条目列表（自然排序）。

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveInDir(t *testing.T) {
@@ -68,6 +69,52 @@ func TestSanitizeUploadName(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, ".txt") {
 		t.Fatalf("截断后应保留扩展名：%q", got)
+	}
+}
+
+func TestScanFileEntries(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string, mtime time.Time) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	older := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	newer := time.Date(2026, 11, 3, 15, 42, 0, 0, time.UTC)
+	write("b10.txt", "0123456789", newer)
+	write("b2.txt", "ab", older)
+	write(".hidden", "x", newer)
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	names, meta := scanFileEntries(dir)
+
+	if want := []string{"b2.txt", "b10.txt"}; strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("文件名=%v，期望 %v", names, want)
+	}
+	if len(meta) != len(names) {
+		t.Fatalf("fileMeta 数量 %d，与文件数 %d 不一致", len(meta), len(names))
+	}
+	for i, m := range meta {
+		if m.Name != names[i] {
+			t.Fatalf("第 %d 项顺序不一致：%q vs %q", i, m.Name, names[i])
+		}
+	}
+	if meta[0].Size != 2 || meta[0].Mtime != older.UnixMilli() {
+		t.Fatalf("b2.txt 元数据不正确：%+v", meta[0])
+	}
+	if meta[1].Size != 10 || meta[1].Mtime != newer.UnixMilli() {
+		t.Fatalf("b10.txt 元数据不正确：%+v", meta[1])
+	}
+
+	if names, meta := scanFileEntries(filepath.Join(dir, "missing")); len(names) != 0 || len(meta) != 0 {
+		t.Fatalf("目录不存在时应返回空列表：%v %v", names, meta)
 	}
 }
 

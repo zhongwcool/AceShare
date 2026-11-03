@@ -91,10 +91,16 @@
 ```json
 {
   "files": ["a.zip", "b.dmg"],
+  "fileMeta": [
+    { "name": "a.zip", "size": 1048576, "mtime": 1793691720000 },
+    { "name": "b.dmg", "size": 52428800, "mtime": 1793688000000 }
+  ],
   "lines": [{ "title": "wifi密码", "text": "abc12345" }],
   "texts": [{ "title": "说明", "text": "多行\n文本内容" }]
 }
 ```
+
+`fileMeta` 与 `files` 顺序一致：`size` 为字节数（读不到时为 -1），`mtime` 为修改时间（Unix 毫秒）。`files/` 为空时省略该字段。旧客户端只读 `files`，不受影响。
 
 - `POST /api/upload` —— 上传文件到 `files/`。`multipart/form-data`，字段名 `file`，可重复（一次最多 100 个，整次请求最大 8GB）。文件名会去掉目录并替换非法字符；与已有文件重名时自动保存为 `名称_2.扩展名`，不覆盖。成功返回：
 
