@@ -40,6 +40,41 @@ func TestShareableIPv4(t *testing.T) {
 	}
 }
 
+func TestSortLANIPv4sPrefersHomeLAN(t *testing.T) {
+	ips := []string{"172.31.64.1", "10.0.0.2", "198.18.0.1", "192.168.3.9", "172.16.0.1"}
+	sortLANIPv4s(ips)
+	want := []string{"192.168.3.9", "10.0.0.2", "172.16.0.1", "172.31.64.1", "198.18.0.1"}
+	for i := range want {
+		if ips[i] != want[i] {
+			t.Fatalf("排序结果 %v，期望 %v", ips, want)
+		}
+	}
+	if got := preferredOpenHost(ips); got != "192.168.3.9" {
+		t.Fatalf("应打开 %s，实际 %s", "192.168.3.9", got)
+	}
+	if formatURL("192.168.3.9", 80) != "http://192.168.3.9" {
+		t.Fatal("80 端口不应出现在地址里")
+	}
+	if formatURL("192.168.3.9", 8001) != "http://192.168.3.9:8001" {
+		t.Fatal("非 80 端口应写在地址里")
+	}
+}
+
+func TestPreferredOpenPortUsesBoundPort(t *testing.T) {
+	if got := preferredOpenPort([]int{80, 8000}); got != 80 {
+		t.Fatalf("同时绑上 80 与 8000 时应使用 80，实际 %d", got)
+	}
+	if got := preferredOpenPort([]int{8000}); got != 8000 {
+		t.Fatalf("80 失败时应使用 8000，实际 %d", got)
+	}
+	if got := preferredOpenPort([]int{8003}); got != 8003 {
+		t.Fatalf("80 与 8000 都失败时应使用实际端口，实际 %d", got)
+	}
+	if formatPorts([]int{8003}) != "8003" {
+		t.Fatal("端口行应显示实际绑定端口")
+	}
+}
+
 func TestSelectLANInterfacesSkipsVirtualNics(t *testing.T) {
 	selected := selectLANInterfaces()
 	var ips []string

@@ -252,7 +252,7 @@ func main() {
 
 	port := flag.Int("port", 0, "监听端口；0=自动同时监听 80 与 8000。也可显式指定单个端口如 8000")
 	dir := flag.String("dir", defaultDir, "根目录（内含 files/ lines/ texts/ 三个子目录）")
-	open := flag.Bool("open", true, "启动后自动用默认浏览器打开本机页面（-open=false 可禁用）")
+	open := flag.Bool("open", true, "启动后自动用默认浏览器打开局域网地址（-open=false 可禁用）")
 	mdnsEnabled := flag.Bool("mdns", true, "通过 mDNS/Bonjour 在局域网宣告服务，便于客户端免 IP 发现（-mdns=false 可禁用）")
 	showVersion := flag.Bool("version", false, "打印版本信息后退出")
 	flag.BoolVar(showVersion, "v", false, "打印版本信息后退出（-version 简写）")
@@ -283,19 +283,10 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// 首页：内嵌的 index.html。
-	// 本机用局域网 IP 打开时，重定向到 localhost，否则 Chrome 会禁止读取剪贴板。
+	// 首页：内嵌的 index.html。地址保持在局域网 IP 上，不跳回 localhost。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
-			return
-		}
-		if r.URL.Query().Get("stay") != "1" && !isLoopbackRequestHost(r) && isRequestFromThisMachine(r) {
-			target := formatURL("localhost", portFromRequest(r))
-			if q := r.URL.RawQuery; q != "" {
-				target += "?" + q
-			}
-			http.Redirect(w, r, target, http.StatusFound)
 			return
 		}
 		data, err := embeddedFiles.ReadFile("index.html")
@@ -545,7 +536,8 @@ func main() {
 	}
 
 	displayPort := preferredOpenPort(boundPorts)
-	printBanner(rootDir, boundPorts, *mdnsEnabled)
+	lanIPs := lanIPv4s()
+	printBanner(rootDir, boundPorts, lanIPs, *mdnsEnabled)
 
 	// mDNS/Bonjour：宣告主端口，供 Android / iOS / Apple TV 等客户端自动发现。
 	var mdnsServer *zeroconf.Server
@@ -564,10 +556,9 @@ func main() {
 		}
 	}
 
-	// 启动后打开 localhost。Chrome 只在安全上下文（localhost / HTTPS）允许读剪贴板；
-	// 局域网地址仍打印在横幅中，供手机访问。
+	// 启动后打开实际局域网地址。80 端口省略端口号，其它端口写在地址里。
 	if *open {
-		openURL := formatURL("localhost", displayPort)
+		openURL := formatURL(preferredOpenHost(lanIPs), displayPort)
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			if err := openBrowser(openURL); err != nil {
@@ -1085,8 +1076,9 @@ func formatURL(host string, port int) string {
 }
 
 // printBanner 打印访问地址等启动信息。
-// 地址只按优先端口展示一次（通常为 80），可访问端口单独列出，避免重复打印 :8000 地址。
-func printBanner(rootDir string, ports []int, mdnsEnabled bool) {
+// ports 是实际绑定成功的端口（优先 80、8000，都失败时为回退端口）。
+// 地址只按优先端口展示一次；80 省略端口号。
+func printBanner(rootDir string, ports []int, ips []string, mdnsEnabled bool) {
 	fmt.Println("========================================")
 	fmt.Println(" 局域网文件与文本分享工具")
 	fmt.Println(" ")
@@ -1099,9 +1091,6 @@ func printBanner(rootDir string, ports []int, mdnsEnabled bool) {
 	fmt.Println("----------------------------------------")
 
 	displayPort := preferredOpenPort(ports)
-	fmt.Printf(" 本机访问地址：   %s\n", formatURL("localhost", displayPort))
-
-	ips := localIPv4s()
 	if len(ips) == 0 {
 		fmt.Println(" 局域网访问地址： （未检测到可用网卡 IPv4 地址）")
 	} else {
@@ -1129,57 +1118,6 @@ func formatPorts(ports []int) string {
 	return strings.Join(parts, "、")
 }
 
-// portFromRequest 从 Host 头解析端口；缺省按 80/443。
-func portFromRequest(r *http.Request) int {
-	_, portStr, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		if r.TLS != nil {
-			return 443
-		}
-		return 80
-	}
-	p, convErr := strconv.Atoi(portStr)
-	if convErr != nil || p <= 0 {
-		return 80
-	}
-	return p
-}
-
-func hostWithoutPort(host string) string {
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	return strings.Trim(host, "[]")
-}
-
-func isLoopbackRequestHost(r *http.Request) bool {
-	h := strings.ToLower(hostWithoutPort(r.Host))
-	return h == "localhost" || h == "127.0.0.1" || h == "::1"
-}
-
-func requestRemoteIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
-// isRequestFromThisMachine 判断浏览器是否跑在分享电脑本机（而不是手机或另一台电脑）。
-func isRequestFromThisMachine(r *http.Request) bool {
-	ip := requestRemoteIP(r)
-	parsed := net.ParseIP(ip)
-	if parsed != nil && parsed.IsLoopback() {
-		return true
-	}
-	for _, local := range localIPv4s() {
-		if ip == local {
-			return true
-		}
-	}
-	return false
-}
-
 // preferredOpenPort 返回自动打开浏览器时优先使用的端口（80 > 8000 > 其它）。
 func preferredOpenPort(ports []int) int {
 	for _, want := range []int{80, 8000} {
@@ -1195,45 +1133,70 @@ func preferredOpenPort(ports []int) int {
 	return 8000
 }
 
-// localIPv4s 返回所有非回环网卡的 IPv4 地址。
-func localIPv4s() []string {
+// lanIPv4s 返回可从局域网访问的 IPv4。家庭网段排在前面，虚拟网卡和代理地址不包含在内。
+func lanIPv4s() []string {
 	var ips []string
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return ips
-	}
-	for _, iface := range ifaces {
-		// 跳过未启用或回环网卡。
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
+	seen := map[string]struct{}{}
+	for _, ifi := range selectLANInterfaces() {
+		addrs, err := ifi.Addrs()
 		if err != nil {
 			continue
 		}
 		for _, addr := range addrs {
-			var ip net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			}
-			if ip == nil || ip.IsLoopback() {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok || !shareableIPv4(ipnet.IP) {
 				continue
 			}
-			ip4 := ip.To4()
-			if ip4 == nil {
-				continue // 跳过 IPv6
+			ip := ipnet.IP.To4().String()
+			if _, dup := seen[ip]; dup {
+				continue
 			}
-			if ip4.IsLinkLocalUnicast() {
-				continue // 跳过 169.254.x.x
-			}
-			ips = append(ips, ip4.String())
+			seen[ip] = struct{}{}
+			ips = append(ips, ip)
 		}
 	}
-	sort.Slice(ips, func(i, j int) bool { return naturalLess(ips[i], ips[j]) })
+	sortLANIPv4s(ips)
 	return ips
+}
+
+// preferredOpenHost 是启动后浏览器要打开的地址。没有局域网地址时退回本机回环。
+func preferredOpenHost(ips []string) string {
+	if len(ips) == 0 {
+		return "127.0.0.1"
+	}
+	return ips[0]
+}
+
+// sortLANIPv4s 把 192.168 排在 10、172.16/12 和其它地址前面。
+func sortLANIPv4s(ips []string) {
+	sort.SliceStable(ips, func(i, j int) bool {
+		ri, rj := lanIPRank(ips[i]), lanIPRank(ips[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return naturalLess(ips[i], ips[j])
+	})
+}
+
+func lanIPRank(ip string) int {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return 9
+	}
+	v4 := parsed.To4()
+	if v4 == nil {
+		return 9
+	}
+	if v4[0] == 192 && v4[1] == 168 {
+		return 0
+	}
+	if v4[0] == 10 {
+		return 1
+	}
+	if v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31 {
+		return 2
+	}
+	return 3
 }
 
 // naturalLess 实现简单的自然排序比较：数字段按数值大小比较（1 < 2 < 10），
