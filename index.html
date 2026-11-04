@@ -246,6 +246,8 @@
     gap: 4px;
     min-width: 0;
     padding: 8px 2px;
+    --file-row-base: var(--panel);
+    --file-row-bg: var(--file-row-base);
   }
   ul.file-list .file-main {
     display: flex;
@@ -304,6 +306,13 @@
   }
   ul.file-list .file-action.is-danger:hover { color: var(--err); }
   ul.file-list .file-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  ul.file-list .file-actions {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  ul.file-list .file-actions .file-action { position: relative; z-index: 1; }
 
   /* 列表行右侧信息：大小与修改时间，跟文件名同一行，过长时只省略文件名 */
   ul.file-list .file-meta {
@@ -325,6 +334,49 @@
   }
   ul.file-list .file-size { min-width: 4.6em; text-align: right; }
   ul.file-list .file-mtime { min-width: 7em; text-align: right; }
+
+  /* 桌面端：下载/删除默认不占位。悬浮时叠在行右侧，底下两层渐变从透明过渡到不透明。 */
+  @media (hover: hover) and (pointer: fine) {
+    ul.file-list .file-row { position: relative; }
+    ul.file-list .file-row:hover,
+    ul.file-list .file-row:focus-within {
+      --file-row-bg: color-mix(in srgb, var(--file-row-base) 92%, rgb(127 127 127));
+      background: var(--file-row-bg);
+    }
+    ul.file-list .file-row:hover .file-main,
+    ul.file-list .file-row:focus-within .file-main { color: var(--accent); }
+    ul.file-list .file-main:hover { background: transparent; }
+    ul.file-list .file-actions {
+      --file-actions-fade: 64px;
+      position: absolute;
+      top: 0;
+      right: 2px;
+      bottom: 0;
+      z-index: 1;
+      padding-left: var(--file-actions-fade);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+    ul.file-list .file-actions::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg,
+          rgb(from var(--file-row-bg) r g b / 0) 0,
+          rgb(from var(--file-row-bg) r g b / 0.5) 28px,
+          rgb(from var(--file-row-bg) r g b / 0) var(--file-actions-fade)),
+        linear-gradient(90deg,
+          rgb(from var(--file-row-bg) r g b / 0) 0,
+          var(--file-row-bg) var(--file-actions-fade));
+    }
+    ul.file-list .file-row:hover .file-actions,
+    ul.file-list .file-row:focus-within .file-actions { opacity: 1; }
+    ul.file-list .file-row:hover .file-actions .file-action,
+    ul.file-list .file-row:focus-within .file-actions .file-action { pointer-events: auto; }
+  }
 
   /* 相册网格（图片 / 视频 / 音频） */
   .media-grid {
@@ -717,18 +769,18 @@
     flex: none;
     margin: -0.15rem -0.25rem 0 0;
   }
+  /* 复制按钮留在原位。删除按钮右缘跟到复制按钮：单行框内边距与边框，长文本绝对定位的 right。 */
+  .item:has(.copy-snippet) .item-del { margin-right: calc(0.5rem + 1px); }
+  .item:has(.copy-multiline) .item-del { margin-right: calc(0.22rem + 1px); }
   .item-del:hover { color: var(--err); }
   @media (hover: hover) and (pointer: fine) {
-    .item-del,
-    ul.file-list .file-action.is-danger {
+    .item-del {
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.15s, color 0.15s, background 0.15s;
     }
     .item:hover .item-del,
-    .item:focus-within .item-del,
-    ul.file-list .file-row:hover .file-action.is-danger,
-    ul.file-list .file-row:focus-within .file-action.is-danger {
+    .item:focus-within .item-del {
       opacity: 1;
       pointer-events: auto;
     }
@@ -1137,7 +1189,7 @@
     /* 内容区去掉左右内边距，靠页面级留白对齐 */
     .card-body { padding: 0; }
 
-    ul.file-list .file-row { padding: 8px 0; }
+    ul.file-list .file-row { padding: 8px 0; --file-row-base: var(--bg); }
     ul.file-list .file-main { padding: 4px 0; font-size: 15px; }
     ul.file-list .file-meta { gap: 8px; margin-left: 2px; font-size: 11px; }
     .file-groups { gap: 20px; }
@@ -2568,6 +2620,7 @@
     }
     row.appendChild(main);
 
+    var actions = el("div", "file-actions");
     var del = el("button", "file-action is-danger");
     del.type = "button";
     del.title = t("action.delete");
@@ -2576,7 +2629,7 @@
     del.addEventListener("click", function () {
       requestDelete("file", name, shown);
     });
-    row.appendChild(del);
+    actions.appendChild(del);
 
     var dl = el("a", "file-action");
     dl.href = downloadHref;
@@ -2584,7 +2637,8 @@
     dl.title = t("action.download");
     dl.setAttribute("aria-label", t("action.downloadNamed", { name: shown }));
     dl.innerHTML = DOWNLOAD_ICON;
-    row.appendChild(dl);
+    actions.appendChild(dl);
+    row.appendChild(actions);
 
     li.appendChild(row);
     list.appendChild(li);
