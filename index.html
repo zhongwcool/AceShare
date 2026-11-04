@@ -75,7 +75,79 @@
     margin: 0 auto;
     text-align: center;
   }
-  header h1 { font-size: 20px; margin: 0 0 4px; font-weight: 700; }
+  .header-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+  }
+  .header-side { flex: 1 1 0; min-width: 0; }
+  .lang-switch {
+    position: relative;
+    min-width: auto;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .lang-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .lang-btn svg { width: 18px; height: 18px; }
+  .lang-btn:hover,
+  .lang-btn[aria-expanded="true"] {
+    color: var(--text);
+    background: rgba(127, 127, 127, 0.14);
+  }
+  .lang-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .lang-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: 132px;
+    margin: 0;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  .lang-menu[hidden] { display: none; }
+  .lang-menu button {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: start;
+    cursor: pointer;
+  }
+  .lang-menu button:hover { background: rgba(127, 127, 127, 0.12); }
+  .lang-menu button[aria-selected="true"] { color: var(--accent); font-weight: 600; }
+  .lang-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  header h1 {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
   header .app-version {
     margin: 0;
     color: var(--text-dim);
@@ -1039,6 +1111,7 @@
   @media (max-width: 640px) {
     header { padding: 16px 16px 4px; }
     header h1 { font-size: 18px; }
+    .lang-btn { width: 36px; height: 36px; }
     header .app-version { font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
 
     .layout { padding: 4px 16px 8px; gap: 0; }
@@ -1109,7 +1182,19 @@
 <body>
   <div class="page">
     <header>
-      <h1>局域网文件与文本分享</h1>
+      <div class="header-bar">
+        <span class="header-side" aria-hidden="true"></span>
+        <h1 data-i18n="app.title">局域网文件与文本分享</h1>
+        <div class="header-side lang-switch">
+          <button type="button" id="lang-btn" class="lang-btn" data-i18n-aria="lang.label" data-i18n-title="lang.label" aria-label="语言" aria-haspopup="listbox" aria-expanded="false" aria-controls="lang-menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </button>
+          <div id="lang-menu" class="lang-menu" role="listbox" hidden>
+            <button type="button" role="option" data-lang="zh-CN">简体中文</button>
+            <button type="button" role="option" data-lang="en">English</button>
+          </div>
+        </div>
+      </div>
       <div id="app-version" class="app-version"></div>
     </header>
 
@@ -1117,7 +1202,7 @@
     <!-- 左栏：文件列表 -->
     <div class="col col-files">
       <section class="card" id="files-card">
-        <h2>文件 <span class="count" id="files-count"></span></h2>
+        <h2><span data-i18n="card.files">文件</span> <span class="count" id="files-count"></span></h2>
         <div class="card-body">
           <div id="files-status" class="status">正在加载…</div>
           <div class="file-groups" id="files-list"></div>
@@ -1128,7 +1213,7 @@
     <!-- 右栏：单行文本 + 长文本 + 粘贴录入 -->
     <div class="col col-texts">
       <section class="card">
-        <h2>单行文本 <span class="count" id="lines-count"></span></h2>
+        <h2><span data-i18n="card.lines">单行文本</span> <span class="count" id="lines-count"></span></h2>
         <div class="card-body">
           <div id="lines-status" class="status">正在加载…</div>
           <div id="lines-list"></div>
@@ -1136,7 +1221,7 @@
       </section>
 
       <section class="card">
-        <h2>长文本 <span class="count" id="texts-count"></span></h2>
+        <h2><span data-i18n="card.texts">长文本</span> <span class="count" id="texts-count"></span></h2>
         <div class="card-body">
           <div id="texts-status" class="status">正在加载…</div>
           <div id="texts-list"></div>
@@ -1144,20 +1229,20 @@
       </section>
 
       <section class="card">
-        <h2>粘贴文本</h2>
+        <h2 data-i18n="card.paste">粘贴文本</h2>
         <div class="card-body">
           <form class="paste-form" id="paste-form" autocomplete="off">
             <div class="paste-title-row" id="paste-title-row">
-              <label for="paste-title">标题（可选）</label>
-              <input type="text" id="paste-title" name="title" maxlength="80" placeholder="留空则用内容前几字或时间命名" />
+              <label for="paste-title" data-i18n="paste.titleLabel">标题（可选）</label>
+              <input type="text" id="paste-title" name="title" maxlength="80" data-i18n-placeholder="paste.titlePlaceholder" placeholder="留空则用内容前几字或时间命名" />
             </div>
             <div>
-              <label for="paste-text">内容</label>
+              <label for="paste-text" data-i18n="paste.contentLabel">内容</label>
               <textarea id="paste-text" name="text" rows="4" placeholder="点击此处自动粘贴，或直接输入" required></textarea>
             </div>
             <div class="paste-actions">
-              <button type="submit" class="btn-primary" id="paste-submit">保存</button>
-              <button type="button" class="btn-secondary" id="paste-add-title">添加标题</button>
+              <button type="submit" class="btn-primary" id="paste-submit" data-i18n="paste.save">保存</button>
+              <button type="button" class="btn-secondary" id="paste-add-title" data-i18n="paste.addTitle">添加标题</button>
             </div>
             <div class="paste-msg" id="paste-msg" aria-live="polite"></div>
           </form>
@@ -1177,9 +1262,9 @@
       <div class="preview-header">
         <div class="preview-title" id="preview-title"></div>
         <div class="preview-actions">
-          <button type="button" id="preview-delete" class="preview-icon-btn is-danger" title="删除" aria-label="删除"></button>
-          <a id="preview-download" class="preview-icon-btn" title="下载" aria-label="下载" download></a>
-          <button type="button" id="preview-close" class="preview-icon-btn" title="关闭" aria-label="关闭"></button>
+          <button type="button" id="preview-delete" class="preview-icon-btn is-danger" data-i18n-title="action.delete" data-i18n-aria="action.delete" title="删除" aria-label="删除"></button>
+          <a id="preview-download" class="preview-icon-btn" data-i18n-title="action.download" data-i18n-aria="action.download" title="下载" aria-label="下载" download></a>
+          <button type="button" id="preview-close" class="preview-icon-btn" data-i18n-title="action.close" data-i18n-aria="action.close" title="关闭" aria-label="关闭"></button>
         </div>
       </div>
       <div class="preview-body" id="preview-body"></div>
@@ -1189,11 +1274,11 @@
   <div id="undo-toast" class="undo-toast" hidden>
     <span id="undo-toast-msg" class="undo-toast__msg" role="status" aria-live="polite"></span>
     <span id="undo-toast-count" class="undo-toast__count" aria-hidden="true">5s</span>
-    <button type="button" id="undo-toast-btn" class="undo-toast__btn">撤销</button>
+    <button type="button" id="undo-toast-btn" class="undo-toast__btn" data-i18n="undo.button">撤销</button>
   </div>
 
   <footer>
-    <div>局域网文件与文本分享工具 · 联系开发者：<a href="mailto:zhongwcool@163.com">zhongwcool@163.com</a></div>
+    <div><span data-i18n="footer.text">局域网文件与文本分享工具 · 联系开发者：</span><a href="mailto:zhongwcool@163.com">zhongwcool@163.com</a></div>
   </footer>
 
   <form class="upload-fab" id="upload-form" action="/api/upload" method="post" enctype="multipart/form-data">
@@ -1203,9 +1288,9 @@
       </div>
       <div class="upload-msg" id="upload-msg" aria-live="polite"></div>
     </div>
-    <label class="upload-fab__btn" id="upload-drop" for="upload-input" title="上传文件，也可把文件拖到这里" aria-label="上传文件">
+    <label class="upload-fab__btn" id="upload-drop" for="upload-input" data-i18n-title="upload.dropTitle" data-i18n-aria="upload.aria" title="上传文件，也可把文件拖到这里" aria-label="上传文件">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="upload-fab__arrow"><path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/></g><path d="M5 19h14"/></svg>
-      <span>上传</span>
+      <span data-i18n="upload.button">上传</span>
     </label>
     <input class="upload-input" type="file" id="upload-input" name="file" multiple />
   </form>
@@ -1213,6 +1298,376 @@
 <script>
 (function () {
   "use strict";
+
+  // 界面语言：记住用户的选择，否则跟随浏览器语言。缺翻译时回退到简体中文。
+  var LANG_KEY = "aceshare.lang";
+  var I18N = {
+    "zh-CN": {
+      "app.title": "局域网文件与文本分享",
+      "lang.label": "语言",
+      "card.files": "文件",
+      "card.lines": "单行文本",
+      "card.texts": "长文本",
+      "card.paste": "粘贴文本",
+      "status.loading": "正在加载…",
+      "files.empty": "暂无文件。可以点左下角的上传按钮，或把文件放进 files/ 目录。",
+      "lines.empty": "lines/ 目录为空，暂无单行文本。",
+      "texts.empty": "texts/ 目录为空，暂无长文本。",
+      "paste.titleLabel": "标题（可选）",
+      "paste.titlePlaceholder": "留空则用内容前几字或时间命名",
+      "paste.contentLabel": "内容",
+      "paste.save": "保存",
+      "paste.addTitle": "添加标题",
+      "paste.saving": "正在保存…",
+      "paste.needContent": "请先粘贴或输入内容",
+      "paste.saved": "已保存为{kind}「{name}」",
+      "paste.savedNoName": "已保存为{kind}",
+      "paste.kindLine": "单行文本",
+      "paste.kindText": "长文本",
+      "paste.clipboardEmpty": "剪贴板里没有文本，可直接输入",
+      "paste.filled": "已从剪贴板填入，确认后点保存",
+      "paste.saveFailed": "保存失败：{error}",
+      "paste.longPress": "长按粘贴",
+      "paste.permIOS": "请在顶部点「允许粘贴」",
+      "paste.permAndroid": "请允许读取剪贴板",
+      "paste.permDesktop": "请在弹窗中允许读取剪贴板",
+      "paste.phIOS": "点按后允许粘贴，也可直接输入",
+      "paste.phAndroid": "点按后允许读取剪贴板，也可直接输入",
+      "paste.phDesktop": "点击后允许读取剪贴板，或直接输入 / {shortcut}",
+      "paste.phMobileManual": "点按后长按粘贴，或直接输入",
+      "paste.phDesktopManual": "在此粘贴或输入文本，{shortcut}",
+      "paste.deniedMobile": "已拒绝剪贴板权限，请长按输入框选择「粘贴」",
+      "paste.deniedDesktop": "已拒绝剪贴板权限，请点地址栏左侧重新允许，或按 {shortcut} 粘贴",
+      "paste.retryIOS": "未允许粘贴，可再点一次，或长按输入框选择「粘贴」",
+      "paste.retryAndroid": "未允许读取剪贴板，可再点一次，或长按输入框选择「粘贴」",
+      "paste.retryDesktop": "未允许读取剪贴板，可再点一次，或按 {shortcut} 粘贴",
+      "paste.insecure": "当前地址下 Chrome 不能读剪贴板，本机请改用",
+      "paste.manualMobile": "当前浏览器无法自动读取剪贴板，请长按输入框选择「粘贴」",
+      "paste.manualDesktop": "当前浏览器无法自动读取剪贴板，请按 {shortcut} 粘贴",
+      "action.copy": "复制",
+      "action.copied": "已复制到剪贴板",
+      "action.copyFailed": "复制失败，请手动选择文本复制",
+      "action.open": "打开",
+      "action.openLink": "打开链接",
+      "action.delete": "删除",
+      "action.download": "下载",
+      "action.close": "关闭",
+      "action.deleteNamed": "删除 {name}",
+      "action.downloadNamed": "下载 {name}",
+      "undo.button": "撤销",
+      "undo.deleted": "已删除「{name}」",
+      "cat.image": "图片",
+      "cat.video": "视频",
+      "cat.audio": "音频",
+      "cat.doc": "文档",
+      "cat.text": "文本",
+      "cat.archive": "压缩包",
+      "cat.other": "其他",
+      "meta.bytes": "{n} 字节",
+      "preview.loading": "加载中…",
+      "preview.imageFailed": "图片无法预览，请下载后查看",
+      "preview.pdfFailed": "无法预览。若仍弹出下载工具，请先关闭它再试，或直接下载查看",
+      "preview.textTooLarge": "文件超过 1MB，请下载后查看",
+      "preview.textFailed": "文本无法预览，请下载后查看",
+      "preview.unsupported": "该类型暂不支持预览",
+      "delete.failed": "删除失败：{error}",
+      "err.offline": "无法连接到服务器",
+      "err.http": "服务器返回 {status}",
+      "render.failed": "渲染失败：{error}",
+      "render.failedNamed": "渲染 {name} 失败：",
+      "load.failed": "加载失败：{error}",
+      "load.http": "服务器返回状态 {status}",
+      "version.label": "版本 {text}",
+      "version.update": "有新版本 {version}",
+      "upload.dropTitle": "上传文件，也可把文件拖到这里",
+      "upload.aria": "上传文件",
+      "upload.button": "上传",
+      "upload.busy": "正在上传，请稍候",
+      "upload.progressMany": "正在上传 {n} 个文件…",
+      "upload.progressOne": "正在上传…",
+      "upload.progressManyPct": "正在上传 {n} 个文件… {pct}%",
+      "upload.progressOnePct": "正在上传… {pct}%",
+      "upload.doneNamed": "已上传：{names}",
+      "upload.done": "上传完成",
+      "upload.failed": "上传失败：{error}",
+      "list.sep": "、",
+      "footer.text": "局域网文件与文本分享工具 · 联系开发者：",
+      "err.method_not_allowed": "仅支持 POST",
+      "err.page_unavailable": "无法读取内嵌页面",
+      "err.bad_body": "请求体无效",
+      "err.bad_body_large": "请求体无效或过大",
+      "err.empty_text": "文本内容不能为空",
+      "err.bad_paste_kind": "kind 须为 line、text 或 auto",
+      "err.save_failed": "保存失败",
+      "err.bad_delete_kind": "kind 须为 file、line 或 text",
+      "err.bad_name": "无效文件名",
+      "err.delete_failed": "删除失败",
+      "err.delete_not_regular": "只能删除普通文件",
+      "err.sse_unsupported": "当前服务器不支持 SSE",
+      "err.mkdir_failed": "无法创建文件目录",
+      "err.file_too_large": "文件过大",
+      "err.bad_multipart": "请使用 multipart/form-data 上传，字段名为 file",
+      "err.upload_read_failed": "读取上传内容失败",
+      "err.too_many_files": "一次最多上传 100 个文件",
+      "err.no_files": "没有可保存的文件",
+      "err.not_found": "文件不存在",
+      "err.read_failed": "读取失败",
+      "err.read_not_regular": "只能读取普通文件"
+    },
+    "en": {
+      "app.title": "LAN File & Text Sharing",
+      "lang.label": "Language",
+      "card.files": "Files",
+      "card.lines": "One-line text",
+      "card.texts": "Long text",
+      "card.paste": "Paste text",
+      "status.loading": "Loading…",
+      "files.empty": "No files yet. Use the Upload button at the lower left, or put files in the files/ folder.",
+      "lines.empty": "The lines/ folder is empty.",
+      "texts.empty": "The texts/ folder is empty.",
+      "paste.titleLabel": "Title (optional)",
+      "paste.titlePlaceholder": "Leave empty to use the first few words or the time",
+      "paste.contentLabel": "Content",
+      "paste.save": "Save",
+      "paste.addTitle": "Add title",
+      "paste.saving": "Saving…",
+      "paste.needContent": "Paste or type something first",
+      "paste.saved": "Saved as {kind} \"{name}\"",
+      "paste.savedNoName": "Saved as {kind}",
+      "paste.kindLine": "a one-line snippet",
+      "paste.kindText": "a long note",
+      "paste.clipboardEmpty": "The clipboard has no text. You can type instead.",
+      "paste.filled": "Filled from the clipboard. Click Save to keep it.",
+      "paste.saveFailed": "Couldn't save: {error}",
+      "paste.longPress": "press and hold to paste",
+      "paste.permIOS": "Tap Allow Paste at the top",
+      "paste.permAndroid": "Allow clipboard access",
+      "paste.permDesktop": "Allow clipboard access in the prompt",
+      "paste.phIOS": "Tap to allow paste, or type here",
+      "paste.phAndroid": "Tap to allow clipboard access, or type here",
+      "paste.phDesktop": "Click to allow clipboard access, or type / {shortcut}",
+      "paste.phMobileManual": "Tap, then press and hold to paste, or type here",
+      "paste.phDesktopManual": "Paste or type here, {shortcut}",
+      "paste.deniedMobile": "Clipboard access was denied. Press and hold the box and choose Paste.",
+      "paste.deniedDesktop": "Clipboard access was denied. Allow it from the address bar, or press {shortcut}.",
+      "paste.retryIOS": "Paste was not allowed. Tap again, or press and hold the box and choose Paste.",
+      "paste.retryAndroid": "Clipboard access was not allowed. Tap again, or press and hold the box and choose Paste.",
+      "paste.retryDesktop": "Clipboard access was not allowed. Click again, or press {shortcut}.",
+      "paste.insecure": "Chrome can't read the clipboard on this address. On this computer, open",
+      "paste.manualMobile": "This browser can't read the clipboard. Press and hold the box and choose Paste.",
+      "paste.manualDesktop": "This browser can't read the clipboard. Press {shortcut}.",
+      "action.copy": "Copy",
+      "action.copied": "Copied to clipboard",
+      "action.copyFailed": "Couldn't copy. Select the text and copy it manually.",
+      "action.open": "Open",
+      "action.openLink": "Open link",
+      "action.delete": "Delete",
+      "action.download": "Download",
+      "action.close": "Close",
+      "action.deleteNamed": "Delete {name}",
+      "action.downloadNamed": "Download {name}",
+      "undo.button": "Undo",
+      "undo.deleted": "Deleted \"{name}\"",
+      "cat.image": "Images",
+      "cat.video": "Videos",
+      "cat.audio": "Audio",
+      "cat.doc": "Documents",
+      "cat.text": "Text",
+      "cat.archive": "Archives",
+      "cat.other": "Other",
+      "meta.bytes": "{n} bytes",
+      "preview.loading": "Loading…",
+      "preview.imageFailed": "Can't preview this image. Download it to view.",
+      "preview.pdfFailed": "Can't preview this file. If a download tool opened, close it and try again, or download the file.",
+      "preview.textTooLarge": "This file is over 1 MB. Download it to view.",
+      "preview.textFailed": "Can't preview this text. Download it to view.",
+      "preview.unsupported": "This file type can't be previewed",
+      "delete.failed": "Couldn't delete: {error}",
+      "err.offline": "Couldn't reach the server",
+      "err.http": "Server returned {status}",
+      "render.failed": "Couldn't render: {error}",
+      "render.failedNamed": "Couldn't render {name}:",
+      "load.failed": "Couldn't load: {error}",
+      "load.http": "Server returned status {status}",
+      "version.label": "Version {text}",
+      "version.update": "New version {version}",
+      "upload.dropTitle": "Upload files, or drop them here",
+      "upload.aria": "Upload files",
+      "upload.button": "Upload",
+      "upload.busy": "Upload in progress, please wait",
+      "upload.progressMany": "Uploading {n} files…",
+      "upload.progressOne": "Uploading…",
+      "upload.progressManyPct": "Uploading {n} files… {pct}%",
+      "upload.progressOnePct": "Uploading… {pct}%",
+      "upload.doneNamed": "Uploaded: {names}",
+      "upload.done": "Upload complete",
+      "upload.failed": "Upload failed: {error}",
+      "list.sep": ", ",
+      "footer.text": "LAN file & text sharing · Contact: ",
+      "err.method_not_allowed": "Only POST is supported",
+      "err.page_unavailable": "Couldn't load the page",
+      "err.bad_body": "Invalid request",
+      "err.bad_body_large": "Invalid or too large request",
+      "err.empty_text": "Text cannot be empty",
+      "err.bad_paste_kind": "kind must be line, text, or auto",
+      "err.save_failed": "the server could not write the file",
+      "err.bad_delete_kind": "kind must be file, line, or text",
+      "err.bad_name": "Invalid file name",
+      "err.delete_failed": "the server could not remove it",
+      "err.delete_not_regular": "Only regular files can be deleted",
+      "err.sse_unsupported": "Live updates are not supported",
+      "err.mkdir_failed": "Couldn't create the files folder",
+      "err.file_too_large": "File is too large",
+      "err.bad_multipart": "Use multipart/form-data with a field named file",
+      "err.upload_read_failed": "Couldn't read the upload",
+      "err.too_many_files": "You can upload at most 100 files at a time",
+      "err.no_files": "No file to save",
+      "err.not_found": "File not found",
+      "err.read_failed": "Couldn't read the file",
+      "err.read_not_regular": "Only regular files can be read"
+    }
+  };
+  var currentLang = detectLang();
+  var pasteClient = null;
+  var versionInfo = null;
+
+  function detectLang() {
+    var saved = "";
+    try { saved = localStorage.getItem(LANG_KEY) || ""; } catch (e) {}
+    if (I18N[saved]) return saved;
+    var prefs = navigator.languages || [navigator.language || ""];
+    var i;
+    for (i = 0; i < prefs.length; i++) {
+      var p = String(prefs[i] || "").toLowerCase();
+      if (p.indexOf("zh") === 0) return "zh-CN";
+      if (p.indexOf("en") === 0) return "en";
+    }
+    return "zh-CN";
+  }
+
+  function t(key, params) {
+    var pack = I18N[currentLang] || I18N["zh-CN"];
+    var s = pack[key];
+    if (s == null) s = I18N["zh-CN"][key];
+    if (s == null) return key;
+    if (!params) return s;
+    return s.replace(/\{(\w+)\}/g, function (_, k) {
+      return params[k] != null ? String(params[k]) : "{" + k + "}";
+    });
+  }
+
+  function applyI18nAttr(attr, assign) {
+    var nodes = document.querySelectorAll("[" + attr + "]");
+    var i;
+    for (i = 0; i < nodes.length; i++) {
+      assign(nodes[i], t(nodes[i].getAttribute(attr)));
+    }
+  }
+
+  function applyStaticI18n() {
+    document.documentElement.lang = currentLang === "en" ? "en" : "zh-CN";
+    document.title = t("app.title");
+    applyI18nAttr("data-i18n", function (node, text) { node.textContent = text; });
+    applyI18nAttr("data-i18n-placeholder", function (node, text) { node.placeholder = text; });
+    applyI18nAttr("data-i18n-title", function (node, text) { node.title = text; });
+    applyI18nAttr("data-i18n-aria", function (node, text) { node.setAttribute("aria-label", text); });
+    syncLangMenu();
+  }
+
+  function setLang(lang) {
+    if (!I18N[lang] || lang === currentLang) return;
+    currentLang = lang;
+    try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+    applyStaticI18n();
+    renderAll();
+    renderVersion();
+    refreshPastePlaceholder();
+    refreshUndoToast();
+    setPasteMsg("");
+    setUploadMsg("");
+  }
+
+  function syncLangMenu() {
+    var menu = document.getElementById("lang-menu");
+    if (!menu) return;
+    var opts = menu.querySelectorAll("[data-lang]");
+    var i;
+    for (i = 0; i < opts.length; i++) {
+      var on = opts[i].getAttribute("data-lang") === currentLang;
+      opts[i].setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  function setLangMenuOpen(open) {
+    var menu = document.getElementById("lang-menu");
+    var btn = document.getElementById("lang-btn");
+    if (!menu || !btn) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) syncLangMenu();
+  }
+
+  function bindLang() {
+    var btn = document.getElementById("lang-btn");
+    var menu = document.getElementById("lang-menu");
+    if (!btn || !menu) return;
+    syncLangMenu();
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      setLangMenuOpen(menu.hidden);
+    });
+    menu.addEventListener("click", function (ev) {
+      var node = ev.target;
+      while (node && node !== menu) {
+        if (node.getAttribute && node.getAttribute("data-lang")) break;
+        node = node.parentNode;
+      }
+      if (!node || node === menu) return;
+      ev.stopPropagation();
+      setLang(node.getAttribute("data-lang"));
+      setLangMenuOpen(false);
+    });
+    document.addEventListener("click", function () { setLangMenuOpen(false); });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") setLangMenuOpen(false);
+    });
+  }
+
+  function serverErrorText(code, body, status) {
+    var c = String(code || "").trim();
+    if (c && Object.prototype.hasOwnProperty.call(I18N["zh-CN"], "err." + c)) {
+      return t("err." + c);
+    }
+    var text = String(body || "").replace(/\s+$/g, "").trim();
+    if (text) return text;
+    return t("err.http", { status: status });
+  }
+
+  function isNetworkError(err) {
+    var m = err && err.message ? String(err.message) : "";
+    return !m || /failed to fetch|networkerror|load failed|network error/i.test(m);
+  }
+
+  function clientErrorText(err) {
+    if (isNetworkError(err)) return t("err.offline");
+    return String(err && err.message ? err.message : t("err.offline"));
+  }
+
+  function refreshPastePlaceholder() {
+    var textEl = document.getElementById("paste-text");
+    if (!textEl) return;
+    if (!pasteClient) pasteClient = detectClient();
+    textEl.placeholder = defaultPastePlaceholder(pasteClient);
+  }
+
+  function refreshUndoToast() {
+    var toast = document.getElementById("undo-toast");
+    if (!toast || toast.hidden) return;
+    var item = pendingDeletes[lastPendingKey];
+    var msg = document.getElementById("undo-toast-msg");
+    if (!item || !msg) return;
+    msg.textContent = t("undo.deleted", { name: item.label });
+  }
 
   var COPY_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -1244,13 +1699,13 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 
   var FILE_CATEGORIES = [
-    { id: "image", label: "图片", icon: IMAGE_ICON, exts: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "avif", "heic", "heif", "tif", "tiff"] },
-    { id: "video", label: "视频", icon: VIDEO_ICON, exts: ["mp4", "webm", "ogv", "mov", "mkv", "avi", "m4v", "wmv", "flv"] },
-    { id: "audio", label: "音频", icon: AUDIO_ICON, exts: ["mp3", "wav", "ogg", "oga", "m4a", "flac", "aac", "opus", "wma"] },
-    { id: "doc", label: "文档", icon: DOC_ICON, exts: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"] },
-    { id: "text", label: "文本", icon: TEXT_ICON, exts: ["txt", "md", "markdown", "json", "xml", "csv", "log", "yml", "yaml", "ini", "conf", "html", "htm", "css", "js", "ts", "go", "py", "java", "c", "h", "cpp", "rs", "sh", "bat", "ps1"] },
-    { id: "archive", label: "压缩包", icon: ARCHIVE_ICON, exts: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"] },
-    { id: "other", label: "其他", icon: FILE_ICON, exts: null }
+    { id: "image", labelKey: "cat.image", icon: IMAGE_ICON, exts: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "avif", "heic", "heif", "tif", "tiff"] },
+    { id: "video", labelKey: "cat.video", icon: VIDEO_ICON, exts: ["mp4", "webm", "ogv", "mov", "mkv", "avi", "m4v", "wmv", "flv"] },
+    { id: "audio", labelKey: "cat.audio", icon: AUDIO_ICON, exts: ["mp3", "wav", "ogg", "oga", "m4a", "flac", "aac", "opus", "wma"] },
+    { id: "doc", labelKey: "cat.doc", icon: DOC_ICON, exts: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"] },
+    { id: "text", labelKey: "cat.text", icon: TEXT_ICON, exts: ["txt", "md", "markdown", "json", "xml", "csv", "log", "yml", "yaml", "ini", "conf", "html", "htm", "css", "js", "ts", "go", "py", "java", "c", "h", "cpp", "rs", "sh", "bat", "ps1"] },
+    { id: "archive", labelKey: "cat.archive", icon: ARCHIVE_ICON, exts: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"] },
+    { id: "other", labelKey: "cat.other", icon: FILE_ICON, exts: null }
   ];
   var PREVIEW_EXTS = {
     image: { jpg: 1, jpeg: 1, png: 1, gif: 1, webp: 1, svg: 1, bmp: 1, ico: 1, avif: 1 },
@@ -1356,42 +1811,44 @@
   }
 
   function pasteShortcutLabel(client) {
-    if (client.isiOS || client.isAndroid) return "长按粘贴";
+    if (client.isiOS || client.isAndroid) return t("paste.longPress");
     return client.isMac ? "⌘V" : "Ctrl+V";
   }
 
   function clipboardPermissionHint(client) {
-    if (client.isiOS) return "请在顶部点「允许粘贴」";
-    if (client.isAndroid) return "请允许读取剪贴板";
-    return "请在弹窗中允许读取剪贴板";
+    if (client.isiOS) return t("paste.permIOS");
+    if (client.isAndroid) return t("paste.permAndroid");
+    return t("paste.permDesktop");
   }
 
   function defaultPastePlaceholder(client) {
+    var shortcut = client.isMac ? "⌘V" : "Ctrl+V";
     if (canReadClipboardApi()) {
-      if (client.isiOS) return "点按后允许粘贴，也可直接输入";
-      if (client.isAndroid) return "点按后允许读取剪贴板，也可直接输入";
-      return "点击后允许读取剪贴板，或直接输入 / " + (client.isMac ? "⌘V" : "Ctrl+V");
+      if (client.isiOS) return t("paste.phIOS");
+      if (client.isAndroid) return t("paste.phAndroid");
+      return t("paste.phDesktop", { shortcut: shortcut });
     }
-    if (client.isMobile) return "点按后长按粘贴，或直接输入";
-    return "在此粘贴或输入文本，" + (client.isMac ? "⌘V" : "Ctrl+V");
+    if (client.isMobile) return t("paste.phMobileManual");
+    return t("paste.phDesktopManual", { shortcut: shortcut });
   }
 
   function clipboardFallbackMsg(err, client, permState) {
     var name = err && err.name;
+    var shortcut = pasteShortcutLabel(client);
     if (permState === "denied" || name === "NotAllowedError") {
       if (permState === "denied") {
-        if (client.isMobile) return "已拒绝剪贴板权限，请长按输入框选择「粘贴」";
-        return "已拒绝剪贴板权限，请点地址栏左侧重新允许，或按 " + pasteShortcutLabel(client) + " 粘贴";
+        if (client.isMobile) return t("paste.deniedMobile");
+        return t("paste.deniedDesktop", { shortcut: shortcut });
       }
-      if (client.isiOS) return "未允许粘贴，可再点一次，或长按输入框选择「粘贴」";
-      if (client.isAndroid) return "未允许读取剪贴板，可再点一次，或长按输入框选择「粘贴」";
-      return "未允许读取剪贴板，可再点一次，或按 " + pasteShortcutLabel(client) + " 粘贴";
+      if (client.isiOS) return t("paste.retryIOS");
+      if (client.isAndroid) return t("paste.retryAndroid");
+      return t("paste.retryDesktop", { shortcut: shortcut });
     }
     if (!window.isSecureContext && !client.isMobile) {
-      return "当前地址下 Chrome 不能读剪贴板，本机请改用";
+      return t("paste.insecure");
     }
-    if (client.isMobile) return "当前浏览器无法自动读取剪贴板，请长按输入框选择「粘贴」";
-    return "当前浏览器无法自动读取剪贴板，请按 " + pasteShortcutLabel(client) + " 粘贴";
+    if (client.isMobile) return t("paste.manualMobile");
+    return t("paste.manualDesktop", { shortcut: shortcut });
   }
 
   function clipboardFallbackLink(err, client) {
@@ -1431,7 +1888,7 @@
         function () {
           btn.classList.add("copied");
           btn.innerHTML = CHECK_ICON;
-          feedback.textContent = "已复制到剪贴板";
+          feedback.textContent = t("action.copied");
           feedback.className = "copy-feedback ok";
           setTimeout(function () {
             btn.classList.remove("copied");
@@ -1441,7 +1898,7 @@
           }, 2000);
         },
         function () {
-          feedback.textContent = "复制失败，请手动选择文本复制";
+          feedback.textContent = t("action.copyFailed");
           feedback.className = "copy-feedback err";
         }
       );
@@ -1552,7 +2009,7 @@
     if (size) {
       var sizeEl = el("span", "file-size");
       sizeEl.textContent = size;
-      if (typeof meta.size === "number" && meta.size >= 0) sizeEl.title = meta.size + " 字节";
+      if (typeof meta.size === "number" && meta.size >= 0) sizeEl.title = t("meta.bytes", { n: meta.size });
       box.appendChild(sizeEl);
     }
     if (mtime) {
@@ -1605,6 +2062,10 @@
 
   var UNDO_MS = 5000;
   var lastList = { files: [], lines: [], texts: [] };
+  var listPhase = "loading";
+  var listErrorKey = "";
+  var listErrorParams = null;
+  var listErrorText = "";
   var pendingDeletes = {};
   var lastPendingKey = "";
   var previewName = "";
@@ -1629,11 +2090,45 @@
     };
   }
 
+  function rememberLoadError(err) {
+    listErrorKey = "";
+    listErrorParams = null;
+    listErrorText = "";
+    if (err && err.i18nKey) {
+      listErrorKey = err.i18nKey;
+      listErrorParams = err.i18nParams || null;
+      return;
+    }
+    if (isNetworkError(err)) {
+      listErrorKey = "err.offline";
+      return;
+    }
+    listErrorText = err && err.message ? String(err.message) : "";
+  }
+
+  function loadErrorMessage() {
+    var detail = listErrorKey ? t(listErrorKey, listErrorParams) : (listErrorText || t("err.offline"));
+    return t("load.failed", { error: detail });
+  }
+
   function renderAll() {
+    if (listPhase === "loading") {
+      var loading = t("status.loading");
+      setStatus("files-status", loading, false);
+      setStatus("lines-status", loading, false);
+      setStatus("texts-status", loading, false);
+      return;
+    }
     var data = visibleList();
-    safeRender("文件", "files-status", renderFiles, data.files);
-    safeRender("单行文本", "lines-status", renderLines, data.lines);
-    safeRender("长文本", "texts-status", renderTexts, data.texts);
+    safeRender("card.files", "files-status", renderFiles, data.files);
+    safeRender("card.lines", "lines-status", renderLines, data.lines);
+    safeRender("card.texts", "texts-status", renderTexts, data.texts);
+    if (listPhase === "error") {
+      var msg = loadErrorMessage();
+      setStatus("files-status", msg, true);
+      setStatus("lines-status", msg, true);
+      setStatus("texts-status", msg, true);
+    }
   }
 
   function formatUndoRemain(ms) {
@@ -1662,7 +2157,7 @@
     var msg = document.getElementById("undo-toast-msg");
     var count = document.getElementById("undo-toast-count");
     if (!toast || !msg) return;
-    msg.textContent = "已删除「" + label + "」";
+    msg.textContent = t("undo.deleted", { name: label });
     if (count) count.textContent = formatUndoRemain(UNDO_MS);
     toast.hidden = false;
     stopUndoTick();
@@ -1734,7 +2229,7 @@
     })
       .then(function (resp) {
         return resp.text().then(function (body) {
-          if (!resp.ok) throw new Error(body || ("服务器返回 " + resp.status));
+          if (!resp.ok) throw new Error(serverErrorText(resp.headers.get("X-Error-Code"), body, resp.status));
         });
       })
       .then(function () {
@@ -1753,10 +2248,11 @@
           hideUndoToast();
         }
         renderAll();
-        console.error("删除失败：", err);
+        var detail = clientErrorText(err);
+        console.error(t("delete.failed", { error: detail }));
         setStatus(
           item.kind === "file" ? "files-status" : (item.kind === "line" ? "lines-status" : "texts-status"),
-          "删除失败：" + (err && err.message ? err.message : "无法连接到服务器"),
+          t("delete.failed", { error: detail }),
           true
         );
       });
@@ -2009,8 +2505,8 @@
     var dl = el("a", "media-dl");
     dl.href = downloadHref;
     dl.setAttribute("download", "");
-    dl.title = "下载";
-    dl.setAttribute("aria-label", "下载 " + shown);
+    dl.title = t("action.download");
+    dl.setAttribute("aria-label", t("action.downloadNamed", { name: shown }));
     dl.innerHTML = DOWNLOAD_ICON;
     dl.addEventListener("click", function (ev) {
       ev.stopPropagation();
@@ -2020,8 +2516,8 @@
     if (nameEl) li.appendChild(nameEl);
     var del = el("button", "media-del");
     del.type = "button";
-    del.title = "删除";
-    del.setAttribute("aria-label", "删除 " + shown);
+    del.title = t("action.delete");
+    del.setAttribute("aria-label", t("action.deleteNamed", { name: shown }));
     del.innerHTML = TRASH_ICON;
     del.addEventListener("click", function (ev) {
       ev.preventDefault();
@@ -2074,8 +2570,8 @@
 
     var del = el("button", "file-action is-danger");
     del.type = "button";
-    del.title = "删除";
-    del.setAttribute("aria-label", "删除 " + shown);
+    del.title = t("action.delete");
+    del.setAttribute("aria-label", t("action.deleteNamed", { name: shown }));
     del.innerHTML = TRASH_ICON;
     del.addEventListener("click", function () {
       requestDelete("file", name, shown);
@@ -2085,8 +2581,8 @@
     var dl = el("a", "file-action");
     dl.href = downloadHref;
     dl.setAttribute("download", "");
-    dl.title = "下载";
-    dl.setAttribute("aria-label", "下载 " + shown);
+    dl.title = t("action.download");
+    dl.setAttribute("aria-label", t("action.downloadNamed", { name: shown }));
     dl.innerHTML = DOWNLOAD_ICON;
     row.appendChild(dl);
 
@@ -2100,14 +2596,14 @@
     root.innerHTML = "";
     setCount("files-count", files.length);
     if (!files.length) {
-      setStatus("files-status", "暂无文件。可以点左下角的上传按钮，或把文件放进 files/ 目录。", false);
+      setStatus("files-status", t("files.empty"), false);
       return;
     }
     setStatus("files-status", "", false);
     groupFiles(files).forEach(function (group) {
       var section = el("div", "file-group");
       var title = el("div", "file-group-title");
-      title.appendChild(document.createTextNode(group.cat.label + " "));
+      title.appendChild(document.createTextNode(t(group.cat.labelKey) + " "));
       var count = el("span", "count");
       count.textContent = group.files.length;
       title.appendChild(count);
@@ -2190,7 +2686,7 @@
     clearPreviewMedia(body);
 
     if (kind === "image") {
-      showPreviewHint(body, "加载中…");
+      showPreviewHint(body, t("preview.loading"));
       var img = document.createElement("img");
       img.alt = shown;
       img.src = previewHref;
@@ -2200,7 +2696,7 @@
       };
       img.onerror = function () {
         body.innerHTML = "";
-        showPreviewHint(body, "图片无法预览，请下载后查看");
+        showPreviewHint(body, t("preview.imageFailed"));
       };
     } else if (kind === "video") {
       var video = document.createElement("video");
@@ -2221,7 +2717,7 @@
     } else if (kind === "doc") {
       // 不用带 .pdf 的地址打开预览。下载工具会拦截这种地址并弹出下载框。
       // 先用脚本取回字节，再交给浏览器内部的 blob 地址显示。
-      showPreviewHint(body, "加载中…");
+      showPreviewHint(body, t("preview.loading"));
       var pdfName = name;
       fetch("/api/file", {
         method: "POST",
@@ -2247,13 +2743,13 @@
         .catch(function () {
           if (previewName !== pdfName) return;
           body.innerHTML = "";
-          showPreviewHint(body, "无法预览。若仍弹出下载工具，请先关闭它再试，或直接下载查看");
+          showPreviewHint(body, t("preview.pdfFailed"));
         });
     } else if (kind === "text") {
-      showPreviewHint(body, "加载中…");
+      showPreviewHint(body, t("preview.loading"));
       fetch(previewHref, { cache: "no-store" })
         .then(function (resp) {
-          if (!resp.ok) throw new Error("服务器返回 " + resp.status);
+          if (!resp.ok) throw new Error(t("err.http", { status: resp.status }));
           var len = parseInt(resp.headers.get("Content-Length") || "", 10);
           if (len > TEXT_PREVIEW_MAX) {
             throw new Error("too-large");
@@ -2271,11 +2767,11 @@
         .catch(function (err) {
           body.innerHTML = "";
           showPreviewHint(body, err && err.message === "too-large"
-            ? "文件超过 1MB，请下载后查看"
-            : "文本无法预览，请下载后查看");
+            ? t("preview.textTooLarge")
+            : t("preview.textFailed"));
         });
     } else {
-      showPreviewHint(body, "该类型暂不支持预览");
+      showPreviewHint(body, t("preview.unsupported"));
     }
 
     overlay.hidden = false;
@@ -2375,8 +2871,8 @@
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.title = "打开";
-    link.setAttribute("aria-label", "打开链接");
+    link.title = t("action.open");
+    link.setAttribute("aria-label", t("action.openLink"));
     link.innerHTML = OPEN_ICON;
     return link;
   }
@@ -2387,7 +2883,7 @@
     list.innerHTML = "";
     setCount("lines-count", lines.length);
     if (!lines.length) {
-      setStatus("lines-status", "lines/ 目录为空，暂无单行文本。", false);
+      setStatus("lines-status", t("lines.empty"), false);
       return;
     }
     setStatus("lines-status", "", false);
@@ -2399,8 +2895,8 @@
       title.textContent = item.title;
       var del = el("button", "copy-btn item-del");
       del.type = "button";
-      del.title = "删除";
-      del.setAttribute("aria-label", "删除 " + item.title);
+      del.title = t("action.delete");
+      del.setAttribute("aria-label", t("action.deleteNamed", { name: item.title }));
       del.innerHTML = TRASH_ICON;
       del.addEventListener("click", function () {
         requestDelete("line", item.title, item.title);
@@ -2423,7 +2919,7 @@
 
       var btn = el("button", "copy-btn");
       btn.type = "button";
-      btn.title = "复制";
+      btn.title = t("action.copy");
       btn.innerHTML = COPY_ICON;
       actions.appendChild(btn);
 
@@ -2448,7 +2944,7 @@
     list.innerHTML = "";
     setCount("texts-count", texts.length);
     if (!texts.length) {
-      setStatus("texts-status", "texts/ 目录为空，暂无长文本。", false);
+      setStatus("texts-status", t("texts.empty"), false);
       return;
     }
     setStatus("texts-status", "", false);
@@ -2460,8 +2956,8 @@
       title.textContent = item.title;
       var del = el("button", "copy-btn item-del");
       del.type = "button";
-      del.title = "删除";
-      del.setAttribute("aria-label", "删除 " + item.title);
+      del.title = t("action.delete");
+      del.setAttribute("aria-label", t("action.deleteNamed", { name: item.title }));
       del.innerHTML = TRASH_ICON;
       del.addEventListener("click", function () {
         requestDelete("text", item.title, item.title);
@@ -2480,7 +2976,7 @@
 
       var btn = el("button", "copy-btn copy-multiline__btn");
       btn.type = "button";
-      btn.title = "复制";
+      btn.title = t("action.copy");
       btn.innerHTML = COPY_ICON;
 
       var pre = el("pre", "copy-multiline__text");
@@ -2503,12 +2999,12 @@
   }
 
   // 安全渲染：单个区域出错不影响其它区域，并把错误显示在对应区域。
-  function safeRender(name, statusId, fn, arg) {
+  function safeRender(nameKey, statusId, fn, arg) {
     try {
       fn(arg);
     } catch (e) {
-      console.error("渲染 " + name + " 失败：", e);
-      setStatus(statusId, "渲染失败：" + (e && e.message ? e.message : e), true);
+      console.error(t("render.failedNamed", { name: t(nameKey) }), e);
+      setStatus(statusId, t("render.failed", { error: e && e.message ? e.message : e }), true);
     }
   }
 
@@ -2516,11 +3012,15 @@
     fetch("/api/list", { cache: "no-store" })
       .then(function (resp) {
         if (!resp.ok) {
-          throw new Error("服务器返回状态 " + resp.status);
+          var httpErr = new Error("http");
+          httpErr.i18nKey = "load.http";
+          httpErr.i18nParams = { status: String(resp.status) };
+          throw httpErr;
         }
         return resp.json();
       })
       .then(function (data) {
+        listPhase = "ready";
         lastList = {
           files: Array.isArray(data.files) ? data.files : [],
           lines: Array.isArray(data.lines) ? data.lines : [],
@@ -2530,11 +3030,33 @@
         renderAll();
       })
       .catch(function (err) {
-        var msg = "加载失败：" + (err && err.message ? err.message : "无法连接到服务器");
-        setStatus("files-status", msg, true);
-        setStatus("lines-status", msg, true);
-        setStatus("texts-status", msg, true);
+        listPhase = "error";
+        rememberLoadError(err);
+        renderAll();
       });
+  }
+
+  function renderVersion() {
+    var node = document.getElementById("app-version");
+    var v = versionInfo;
+    if (!node || !v) return;
+    var parts = [];
+    if (v.version) parts.push(v.version);
+    if (v.buildTime && v.buildTime !== "unknown") parts.push(v.buildTime);
+    if (v.commit && v.commit !== "unknown") parts.push(v.commit.slice(0, 7));
+    node.textContent = "";
+    if (!parts.length) return;
+    node.appendChild(document.createTextNode(t("version.label", { text: parts.join(" · ") })));
+    if (v.updateAvailable && v.latestVersion) {
+      node.appendChild(document.createTextNode(" · "));
+      var a = document.createElement("a");
+      a.href = v.releaseURL || "https://github.com/zhongwcool/AceShare/releases";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "update-hint";
+      a.textContent = t("version.update", { version: v.latestVersion });
+      node.appendChild(a);
+    }
   }
 
   function loadVersion() {
@@ -2544,23 +3066,8 @@
       .then(function (resp) { return resp.ok ? resp.json() : null; })
       .then(function (v) {
         if (!v) return;
-        var parts = [];
-        if (v.version) parts.push(v.version);
-        if (v.buildTime && v.buildTime !== "unknown") parts.push(v.buildTime);
-        if (v.commit && v.commit !== "unknown") parts.push(v.commit.slice(0, 7));
-        node.textContent = "";
-        if (!parts.length) return;
-        node.appendChild(document.createTextNode("版本 " + parts.join(" · ")));
-        if (v.updateAvailable && v.latestVersion) {
-          node.appendChild(document.createTextNode(" · "));
-          var a = document.createElement("a");
-          a.href = v.releaseURL || "https://github.com/zhongwcool/AceShare/releases";
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.className = "update-hint";
-          a.textContent = "有新版本 " + v.latestVersion;
-          node.appendChild(a);
-        }
+        versionInfo = v;
+        renderVersion();
       })
       .catch(function () {});
   }
@@ -2634,7 +3141,7 @@
       }
       if (!files.length) return;
       if (busy) {
-        setUploadMsg("正在上传，请稍候", "");
+        setUploadMsg(t("upload.busy"), "");
         return;
       }
       var fd = new FormData();
@@ -2646,7 +3153,7 @@
         progress.hidden = false;
         bar.style.width = "0%";
       }
-      setUploadMsg(files.length > 1 ? "正在上传 " + files.length + " 个文件…" : "正在上传…", "");
+      setUploadMsg(files.length > 1 ? t("upload.progressMany", { n: files.length }) : t("upload.progressOne"), "");
 
       var xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload");
@@ -2655,7 +3162,9 @@
         var pct = Math.max(0, Math.min(100, Math.round(ev.loaded / ev.total * 100)));
         progress.hidden = false;
         bar.style.width = pct + "%";
-        setUploadMsg((files.length > 1 ? "正在上传 " + files.length + " 个文件… " : "正在上传… ") + pct + "%", "");
+        setUploadMsg(files.length > 1
+          ? t("upload.progressManyPct", { n: files.length, pct: pct })
+          : t("upload.progressOnePct", { pct: pct }), "");
       };
       xhr.onload = function () {
         var text = String(xhr.responseText || "").trim();
@@ -2667,17 +3176,19 @@
           for (var i = 0; i < saved.length; i++) {
             if (saved[i] && saved[i].name) names.push(saved[i].name);
           }
-          var msg = names.length ? "已上传：" + names.join("、") : "上传完成";
+          var msg = names.length ? t("upload.doneNamed", { names: names.join(t("list.sep")) }) : t("upload.done");
           setUploadMsg(msg, "ok");
           scheduleReload();
         } else {
           if (text.length > 200) text = text.slice(0, 200);
-          setUploadMsg("上传失败：" + (text || ("服务器返回 " + xhr.status)), "err");
+          setUploadMsg(t("upload.failed", {
+            error: serverErrorText(xhr.getResponseHeader("X-Error-Code"), text, xhr.status)
+          }), "err");
         }
         setBusy(false);
       };
       xhr.onerror = function () {
-        setUploadMsg("上传失败：无法连接到服务器", "err");
+        setUploadMsg(t("upload.failed", { error: t("err.offline") }), "err");
         setBusy(false);
       };
       xhr.send(fd);
@@ -2763,7 +3274,8 @@
     var addTitleBtn = document.getElementById("paste-add-title");
     if (!form || !textEl) return;
 
-    var client = detectClient();
+    pasteClient = detectClient();
+    var client = pasteClient;
     var unavailableHintShown = false;
     var fillSeq = 0;
     textEl.placeholder = defaultPastePlaceholder(client);
@@ -2786,12 +3298,12 @@
           if (seq !== fillSeq) return;
           if (String(textEl.value || "")) return;
           if (!String(text || "").trim()) {
-            setPasteMsg("剪贴板里没有文本，可直接输入", "");
+            setPasteMsg(t("paste.clipboardEmpty"), "");
             return;
           }
           textEl.value = text;
           textEl.focus();
-          setPasteMsg("已从剪贴板填入，确认后点保存", "ok");
+          setPasteMsg(t("paste.filled"), "ok");
         })
         .catch(function (err) {
           if (seq !== fillSeq) return;
@@ -2812,12 +3324,12 @@
       ev.preventDefault();
       var text = textEl.value;
       if (!String(text).trim()) {
-        setPasteMsg("请先粘贴或输入内容", "err");
+        setPasteMsg(t("paste.needContent"), "err");
         textEl.focus();
         return;
       }
       submitBtn.disabled = true;
-      setPasteMsg("正在保存…", "");
+      setPasteMsg(t("paste.saving"), "");
       var title = titleRow.classList.contains("is-open") ? (titleEl.value || "") : "";
       fetch("/api/paste", {
         method: "POST",
@@ -2831,7 +3343,7 @@
         .then(function (resp) {
           return resp.text().then(function (body) {
             if (!resp.ok) {
-              throw new Error(body || ("服务器返回 " + resp.status));
+              throw new Error(serverErrorText(resp.headers.get("X-Error-Code"), body, resp.status));
             }
             try {
               return JSON.parse(body);
@@ -2841,9 +3353,11 @@
           });
         })
         .then(function (data) {
-          var kindLabel = data.kind === "line" ? "单行文本" : "长文本";
+          var kindLabel = data.kind === "line" ? t("paste.kindLine") : t("paste.kindText");
           var savedTitle = data.title || "";
-          setPasteMsg("已保存为" + kindLabel + (savedTitle ? "「" + savedTitle + "」" : ""), "ok");
+          setPasteMsg(savedTitle
+            ? t("paste.saved", { kind: kindLabel, name: savedTitle })
+            : t("paste.savedNoName", { kind: kindLabel }), "ok");
           textEl.value = "";
           titleEl.value = "";
           titleRow.classList.remove("is-open");
@@ -2852,7 +3366,7 @@
           scheduleReload();
         })
         .catch(function (err) {
-          setPasteMsg("保存失败：" + (err && err.message ? err.message : err), "err");
+          setPasteMsg(t("paste.saveFailed", { error: clientErrorText(err) }), "err");
         })
         .then(function () {
           submitBtn.disabled = false;
@@ -2906,6 +3420,9 @@
   }
 
   function init() {
+    applyStaticI18n();
+    bindLang();
+    renderAll();
     load();
     loadVersion();
     bindUpload();

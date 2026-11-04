@@ -44,26 +44,26 @@ func handleUpload(filesDir string, maxBytes int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 POST")
 			return
 		}
 		if err := os.MkdirAll(filesDir, 0o755); err != nil {
 			log.Printf("创建上传目录失败 %s：%v", filesDir, err)
-			http.Error(w, "无法创建文件目录", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "mkdir_failed", "无法创建文件目录")
 			return
 		}
 		if r.ContentLength > maxBytes {
-			http.Error(w, "文件过大", http.StatusRequestEntityTooLarge)
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "file_too_large", "文件过大")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		mr, err := r.MultipartReader()
 		if err != nil {
 			if isTooLarge(err) {
-				http.Error(w, "文件过大", http.StatusRequestEntityTooLarge)
+				writeAPIError(w, http.StatusRequestEntityTooLarge, "file_too_large", "文件过大")
 				return
 			}
-			http.Error(w, "请使用 multipart/form-data 上传，字段名为 file", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_multipart", "请使用 multipart/form-data 上传，字段名为 file")
 			return
 		}
 
@@ -75,17 +75,17 @@ func handleUpload(filesDir string, maxBytes int64) http.HandlerFunc {
 			}
 			if err != nil {
 				if isTooLarge(err) {
-					http.Error(w, "文件过大", http.StatusRequestEntityTooLarge)
+					writeAPIError(w, http.StatusRequestEntityTooLarge, "file_too_large", "文件过大")
 					return
 				}
-				http.Error(w, "读取上传内容失败", http.StatusBadRequest)
+				writeAPIError(w, http.StatusBadRequest, "upload_read_failed", "读取上传内容失败")
 				return
 			}
 
-			item, status, msg := saveUploadPart(filesDir, part, len(saved))
+			item, status, code, msg := saveUploadPart(filesDir, part, len(saved))
 			part.Close()
 			if status != 0 {
-				http.Error(w, msg, status)
+				writeAPIError(w, status, code, msg)
 				return
 			}
 			if item != nil {
@@ -94,7 +94,7 @@ func handleUpload(filesDir string, maxBytes int64) http.HandlerFunc {
 			}
 		}
 		if len(saved) == 0 {
-			http.Error(w, "没有可保存的文件", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "no_files", "没有可保存的文件")
 			return
 		}
 
@@ -109,28 +109,28 @@ func handleUpload(filesDir string, maxBytes int64) http.HandlerFunc {
 }
 
 // saveUploadPart 保存一个 multipart 部件。
-// 非 file 字段会被跳过。status != 0 表示应中止并返回该 HTTP 状态。
-func saveUploadPart(filesDir string, part *multipart.Part, already int) (item *UploadedFile, status int, msg string) {
+// 非 file 字段会被跳过。status != 0 表示应中止并返回该 HTTP 状态与错误码。
+func saveUploadPart(filesDir string, part *multipart.Part, already int) (item *UploadedFile, status int, code, msg string) {
 	if part.FormName() != "file" || strings.TrimSpace(part.FileName()) == "" {
 		_, _ = io.Copy(io.Discard, part)
-		return nil, 0, ""
+		return nil, 0, "", ""
 	}
 	if already >= maxUploadFiles {
-		return nil, http.StatusBadRequest, fmt.Sprintf("一次最多上传 %d 个文件", maxUploadFiles)
+		return nil, http.StatusBadRequest, "too_many_files", fmt.Sprintf("一次最多上传 %d 个文件", maxUploadFiles)
 	}
 	name := sanitizeUploadName(part.FileName())
 	if name == "" {
-		return nil, http.StatusBadRequest, "文件名无效"
+		return nil, http.StatusBadRequest, "bad_name", "文件名无效"
 	}
 	savedName, size, err := writeUpload(filesDir, name, part)
 	if err != nil {
 		if isTooLarge(err) {
-			return nil, http.StatusRequestEntityTooLarge, "文件过大"
+			return nil, http.StatusRequestEntityTooLarge, "file_too_large", "文件过大"
 		}
 		log.Printf("保存上传文件失败：%v", err)
-		return nil, http.StatusInternalServerError, "保存失败"
+		return nil, http.StatusInternalServerError, "save_failed", "保存失败"
 	}
-	return &UploadedFile{Name: savedName, Size: size}, 0, ""
+	return &UploadedFile{Name: savedName, Size: size}, 0, "", ""
 }
 
 // writeUpload 把 r 写入 filesDir 下的临时文件，完成后以不覆盖的方式换成正式文件名。

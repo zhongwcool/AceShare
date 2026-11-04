@@ -220,6 +220,15 @@ type DeleteRequest struct {
 	Name string `json:"name"`
 }
 
+// writeAPIError 返回原来的纯文本错误，并附上稳定的 X-Error-Code。
+// 网页按这个错误码显示当前语言；不认识错误码的客户端仍可读正文。
+func writeAPIError(w http.ResponseWriter, status int, code, msg string) {
+	if code != "" {
+		w.Header().Set("X-Error-Code", code)
+	}
+	http.Error(w, msg, status)
+}
+
 // Broadcaster 管理所有 SSE 客户端连接，并在目录变化时向它们广播通知。
 type Broadcaster struct {
 	mu      sync.Mutex
@@ -300,7 +309,7 @@ func main() {
 		}
 		data, err := embeddedFiles.ReadFile("index.html")
 		if err != nil {
-			http.Error(w, "无法读取内嵌页面", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "page_unavailable", "无法读取内嵌页面")
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -351,20 +360,20 @@ func main() {
 	// 粘贴文本：将前端提交的内容写入 lines/ 或 texts/，随后 SSE 会通知页面刷新。
 	mux.HandleFunc("/api/paste", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 POST")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 2<<20) // 最大 2MB
 		var req PasteRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "请求体无效或过大", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_body_large", "请求体无效或过大")
 			return
 		}
 		text := strings.ReplaceAll(req.Text, "\r\n", "\n")
 		text = strings.ReplaceAll(text, "\r", "\n")
 		text = strings.TrimSpace(text)
 		if text == "" {
-			http.Error(w, "文本内容不能为空", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "empty_text", "文本内容不能为空")
 			return
 		}
 
@@ -379,7 +388,7 @@ func main() {
 				kind = "line"
 			}
 		default:
-			http.Error(w, "kind 须为 line、text 或 auto", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_paste_kind", "kind 须为 line、text 或 auto")
 			return
 		}
 
@@ -402,7 +411,7 @@ func main() {
 		path := uniqueTxtPath(targetDir, title)
 		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 			log.Printf("写入粘贴文本失败 %s：%v", path, err)
-			http.Error(w, "保存失败", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "save_failed", "保存失败")
 			return
 		}
 
@@ -414,13 +423,13 @@ func main() {
 	// 删除：移除 files/ 中的文件，或 lines/、texts/ 中对应的 .txt。
 	mux.HandleFunc("/api/delete", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 POST")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 		var req DeleteRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "请求体无效", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_body", "请求体无效")
 			return
 		}
 		kind := strings.ToLower(strings.TrimSpace(req.Kind))
@@ -436,12 +445,12 @@ func main() {
 			dir = textsDir
 			name += ".txt"
 		default:
-			http.Error(w, "kind 须为 file、line 或 text", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_delete_kind", "kind 须为 file、line 或 text")
 			return
 		}
 		full, err := resolveInDir(dir, name)
 		if err != nil {
-			http.Error(w, "无效文件名", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_name", "无效文件名")
 			return
 		}
 		info, err := os.Lstat(full)
@@ -452,16 +461,16 @@ func main() {
 		}
 		if err != nil {
 			log.Printf("读取待删除文件失败 %s：%v", full, err)
-			http.Error(w, "删除失败", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "delete_failed", "删除失败")
 			return
 		}
 		if !info.Mode().IsRegular() {
-			http.Error(w, "只能删除普通文件", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "delete_not_regular", "只能删除普通文件")
 			return
 		}
 		if err := os.Remove(full); err != nil {
 			log.Printf("删除文件失败 %s：%v", full, err)
-			http.Error(w, "删除失败", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "delete_failed", "删除失败")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -484,7 +493,7 @@ func main() {
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			http.Error(w, "当前服务器不支持 SSE", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "sse_unsupported", "当前服务器不支持 SSE")
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -998,7 +1007,7 @@ func handleRawFile(filesDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "仅支持 POST", http.StatusMethodNotAllowed)
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 POST")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -1006,33 +1015,33 @@ func handleRawFile(filesDir string) http.HandlerFunc {
 			Name string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "请求体无效", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_body", "请求体无效")
 			return
 		}
 		full, err := resolveInDir(filesDir, req.Name)
 		if err != nil {
-			http.Error(w, "无效文件名", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "bad_name", "无效文件名")
 			return
 		}
 		f, err := os.Open(full)
 		if err != nil {
 			if os.IsNotExist(err) {
-				http.Error(w, "文件不存在", http.StatusNotFound)
+				writeAPIError(w, http.StatusNotFound, "not_found", "文件不存在")
 				return
 			}
 			log.Printf("打开文件失败 %s：%v", full, err)
-			http.Error(w, "读取失败", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "read_failed", "读取失败")
 			return
 		}
 		defer f.Close()
 		info, err := f.Stat()
 		if err != nil {
 			log.Printf("读取文件信息失败 %s：%v", full, err)
-			http.Error(w, "读取失败", http.StatusInternalServerError)
+			writeAPIError(w, http.StatusInternalServerError, "read_failed", "读取失败")
 			return
 		}
 		if !info.Mode().IsRegular() {
-			http.Error(w, "只能读取普通文件", http.StatusBadRequest)
+			writeAPIError(w, http.StatusBadRequest, "read_not_regular", "只能读取普通文件")
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
